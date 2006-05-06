@@ -120,13 +120,15 @@ class AutoTerminatingProtocol(PipelinedProtocolHandler):
 			res = all.find(self._atterm)
 			if res != -1:
 				ind = res + len(self._atterm)
-		if ind:
-			if not all:
+		if ind is not None:
+			if all is None:
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
 			self._atinbuf = [all[ind:]]
 			self.onDataChunk(use)
 			self._scanData()
+		if self._atterm is not None:
+			self.setReadable(True)
 
 	def onDataChunk(self, data):
 		pass
