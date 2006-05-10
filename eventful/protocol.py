@@ -41,15 +41,16 @@ class ProtocolHandler:
 	def onRawData(self, data):
 		pass
 
-	def __del__(self):
-		self._rev = None
-		self._wev = None
-
 	def disconnect(self):
 		self.sock.close()
+		self._cleanup()
+		self.onDisconnect()
+
+	def _cleanup(self):
 		self.setWritable(False)
 		self.setReadable(False)
-		self.onDisconnect()
+		self._rev = None
+		self._wev = None
 
 	def onDisconnect(self):
 		pass
@@ -97,10 +98,10 @@ class AutoTerminatingProtocol(PipelinedProtocolHandler):
 		self._atinbuf = []
 		self._atterm = '\r\n'
 		self._atmark = 0
+		self._eat = 0
 		
 	def setTerminator(self, term):
 		self._atterm = term
-		self._scanData()
 
 	def onRawData(self, data):
 		self._atinbuf.append(data)
@@ -114,7 +115,7 @@ class AutoTerminatingProtocol(PipelinedProtocolHandler):
 		all = None
 		if type(self._atterm) is int:
 			if self._atmark > self._atterm:
-				ind = self._atmark
+				ind = self._atterm
 		else:
 			all = ''.join(self._atinbuf)
 			res = all.find(self._atterm)
@@ -124,11 +125,17 @@ class AutoTerminatingProtocol(PipelinedProtocolHandler):
 			if all is None:
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
-			self._atinbuf = [all[ind:]]
 			self.onDataChunk(use)
+
+			self._atinbuf = [all[ind + self._eat:]]
+			self._atmark = len(self._atinbuf[0])
+			self._eat = 0
 			self._scanData()
 		if self._atterm is not None:
 			self.setReadable(True)
+
+	def eatData(self, l):
+		self._eat += l
 
 	def onDataChunk(self, data):
 		pass

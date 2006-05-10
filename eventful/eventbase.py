@@ -18,6 +18,7 @@ def event_write_handler(handler):
 	try:
 		handler.onWritable()
 	except socket.error:
+		handler._cleanup()
 		handler.onConnectionLost()
 	if handler._wenable:
 		return handler._wev
@@ -34,6 +35,7 @@ def event_read_handler(handler):
 		disconnectReason = str(e)
 		
 	if not data:
+		handler._cleanup()
 		handler.onConnectionLost(disconnectReason)
 	else:
 		handler.onRawData(data)

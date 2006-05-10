@@ -7,7 +7,7 @@ def parseRequestLine(line):
 	items[0] = items[0].upper()
 	if len(items) == 2:
 		return tuple(items) + ('0.9',)
-	items[2] = items[2].split('/')[-1]
+	items[2] = items[2].split('/')[-1].strip()
 	return tuple(items)
 
 class HttpHeaders:
@@ -20,7 +20,11 @@ class HttpHeaders:
 		self.iteritems = self._headers.iteritems
 
 	def add(self, k, v):
-		self._headers.setdefault(k.lower(), []).append(v.strip())
+		self._headers.setdefault(k.lower(), []).append(str(v).strip())
+
+	def remove(self, k):
+		if k.lower() in self._headers:
+			del self._headers[k.lower()]
 
 	def format(self):
 		s = []
@@ -61,20 +65,27 @@ class HttpHeaders:
 	def __iter__(self):
 		return self._headers
 
+class HttpRequest:
+	def __init__(self, cmd, url, version):
+		self.cmd = cmd
+		self.url = url
+		self.version = version
+		self.headers = None
+		self.body = None
+
 class HttpProtocol(AutoTerminatingProtocol):
 	ST_RLINE = 1
 	ST_HEADS = 2
 	ST_BODY_CLEN  = 3
-	ST_BODY_CHUNK  = 4
+	ST_CHUNK_SZ  = 4
+	ST_CHUNK_DATA  = 5
+	ST_CHUNK_TRAILER  = 6
 
 	def onProtocolHandlerCreate(self):
 		self.setReadable(True)
 		self.setTerminator('\r\n')
 		self._http_state = self.ST_RLINE
-		self._req_cmd = None
-		self._req_url = None
-		self._req_version = None
-		self._req_heads = None
+		self._req = None
 
 	def getHandlerMethod(self, cmd):
 		try:
@@ -89,39 +100,92 @@ class HttpProtocol(AutoTerminatingProtocol):
 	@onDataChunk.when('self._http_state == self.ST_RLINE')
 	def onReqLine(self, data):
 		cmd, url, version = parseRequestLine(data)	
-		self._req_cmd = cmd
-		self._req_url = url
-		self._req_version = version
+		self._req = HttpRequest(cmd, url, version)
 		self._http_state = self.ST_HEADS
 		self.setTerminator('\r\n\r\n')
+
+	def checkExpect(self, heads):
+		if self._req.version >= '1.1' and heads.get('Expect') == ['100-continue']:
+			self.write('HTTP/1.1 100 Continue\r\n\r\n')
 
 	@onDataChunk.when('self._http_state == self.ST_HEADS')
 	def onHeaders(self, data):
 		heads = HttpHeaders()
 		heads.parse(data)
 		nextState = self.checkForHttpBody(heads)
-		if not nextState:
-			self.getHandlerMethod(self._req_cmd)(self._req_url, heads, None)
+		self._req.headers = heads
+		self.checkExpect(heads)
+		if nextState is None:
+			self.getHandlerMethod(self._req.cmd)(self._req)
+			self.setTerminator('\r\n')
+			self._http_state = self.ST_RLINE
 		else:
 			self._http_state = nextState
 
 	@onDataChunk.when('self._http_state == self.ST_BODY_CLEN')
 	def onEndBody(self, data):
-		self.getHandlerMethod(self._req_cmd)(self._req_url, heads, data)
+		self._req.body = data
+		self.getHandlerMethod(self._req.cmd)(self._req)
 		self.setTerminator('\r\n')
 		self._http_state = self.ST_RLINE
+		self.eatData(2) # trailing CRLF
 
 	def checkForHttpBody(self, heads):
-		if 'Content-Length' in heads:
-			self.setTerminator(int(heads['Content-Length']))
+		if heads.get('Transfer-Encoding') == ['chunked']:
+			self.setTerminator('\r\n')
+			self._chunks = []
+			return self.ST_CHUNK_SZ
+
+		elif 'Content-Length' in heads:
+			self.setTerminator(int(heads['Content-Length'][0]))
 			return self.ST_BODY_CLEN
 		return None
 
-	def on_noHttpHandler(self, url, headers):
-		self.write('no such handler for HTTP command %s' % self._req_cmd)
-		self.closeCleanly()
+	def on_noHttpHandler(self, req):
+		msg = 'No such handler for HTTP command %s' % req.cmd
+		heads = HttpHeaders()
+		heads.add('Content-Type', 'text/plain')
+		heads.add('Content-Length', len(msg))
+		self.sendHttpResponse(req, '501 Not Implemented', heads, msg)
 
-	def sendHttpResponse(self, code, heads, body):
+	def sendHttpResponse(self, req, code, heads, body):
 		self.write(
-'''HTTP/%s %s\r\n%s\r\n\r\n''' % (self._req_version, code, heads.format()))
+'''HTTP/%s %s\r\n%s\r\n\r\n''' % (req.version, code, heads.format()))
 		self.write(body)
+		if req.version < '1.1' or req.headers.get('Connection') == ['close']:
+			self.closeCleanly()
+
+	# "Chunked" transfer encoding states
+	@onDataChunk.when('self._http_state == self.ST_CHUNK_SZ')
+	def onChunkSize(self, data):
+		if ';' in data:
+			# we don't support any chunk extensions
+			data = data[:data.find(';')]
+		size = int(data, 16)
+		if size == 0:
+			self._http_state = self.ST_CHUNK_TRAILER
+		else:
+			self._http_state = self.ST_CHUNK_DATA
+			self.setTerminator(size)
+
+	@onDataChunk.when('self._http_state == self.ST_CHUNK_DATA')
+	def onChunkData(self, data):
+		self._chunks.append(data)
+		self._http_state = self.ST_CHUNK_SZ
+		self.setTerminator('\r\n')
+		self.eatData(2) # Get rid of trailing CRLF
+
+	@onDataChunk.when('self._http_state == self.ST_CHUNK_TRAILER')
+	def onChunkTrailerHead(self, data):
+		if not data.strip():
+			# We've reached the end.. phew!
+			data = ''.join(self._chunks)
+			self._req.headers.add('Content-Length', len(data))
+			self._req.headers.remove('Transfer-Encoding')
+			self._req.body = data
+			self._chunks = []
+			self.getHandlerMethod(self._req.cmd)(self._req)
+			self._http_state = self.ST_RLINE
+		else:
+			# Adding a header via the trailer...
+			self._req.headers.add(*tuple(data.split(':', 1)))
