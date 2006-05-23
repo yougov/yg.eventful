@@ -3,8 +3,9 @@ import mimetypes
 import time
 
 import tests
-from eventful import Application, Service
-from eventful.proto.http import HttpProtocol, HttpHeaders
+import eventful
+from eventful import Application, Service, log, Logger
+from eventful.proto.http import HttpServerProtocol, HttpHeaders
 
 BASE = '/home/jamie'
 DEFAULT = 'index.html'
@@ -27,7 +28,11 @@ def checkDir(f):
 def isFile(f):
 	return os.path.isfile(f)
 
-class HttpServer(HttpProtocol):
+class HttpServer(HttpServerProtocol):
+	def onProtocolHandlerCreate(self):
+		HttpServerProtocol.onProtocolHandlerCreate(self)
+		self.log = log.getSublogger('http-server')
+		
 	def sendError(self, req, code, heads):
 		top, content = errors[code]
 		heads.add('Content-Type', 'text/plain')
@@ -41,7 +46,7 @@ class HttpServer(HttpProtocol):
 
 	def on_HTTP_GET(self, req):
 		heads = self.getStandardHeaders()
-		print "%s [%s] GET %s" % (self.remote_addr[0], time.asctime(), req.url)
+		self.log.info("%s -- GET %s" % (self.remote_addr[0], req.url))
 		fn = os.path.join(BASE, req.url[1:])
 		if not fn or fn[-1] == '/':
 			fn += DEFAULT
@@ -70,10 +75,10 @@ class HttpServer(HttpProtocol):
 
 	def on_HTTP_POST(self, req):
 		heads = self.getStandardHeaders()
-		print "== POSTED =========================\n%s\n\n" % req.body
-		print req.headers._headers
+		self.log.debug("== POSTED =========================\n%s\n\n" % req.body)
+		self.log.debug(req.headers._headers)
 		self.sendError(req, 403, heads)
 
-application = Application()
+application = Application(logger=Logger(verbosity=eventful.LOGLVL_INFO))
 application.addService(Service(HttpServer, 10101))
 application.run()

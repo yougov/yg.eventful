@@ -1,21 +1,38 @@
 import socket
 import event
+import traceback
 
 from eventful import eventbase
 from eventful import protocol
+from eventful import logmod, log
 
 class Application:
-	def __init__(self):
+	def __init__(self, logger=None):
+		if logger is None:
+			logger = logmod.Logger()
+		self.logger = logger
+		self.addLog = self.logger.addLog
 		self._services = []
 
 	def run(self):
+		logmod.setCurrentApplication(self)
 		for s in self._services:
 			s.bindAndListen()
 			event.event(eventbase.event_read_boundSocket,
 			handle=s.sock, evtype=event.EV_READ | event.EV_PERSIST, arg=s).add()
 
 		while True:
-			event.dispatch()
+			try:
+				event.dispatch()
+			except SystemExit:
+				log.warn("-- SystemExit raised.. exiting main loop --")
+				break
+			except KeyboardInterrupt:
+				log.warn("-- KeyboardInterrupt raised.. exiting main loop --")
+				break
+			except Exception, e:
+				log.error("-- Unhandled Exception in main loop --")
+				log.error(traceback.format_exc())
 
 	def addService(self, service):
 		self._services.append(service)

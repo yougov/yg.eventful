@@ -73,7 +73,7 @@ class HttpRequest:
 		self.headers = None
 		self.body = None
 
-class HttpProtocol(AutoTerminatingProtocol):
+class HttpServerProtocol(AutoTerminatingProtocol):
 	ST_RLINE = 1
 	ST_HEADS = 2
 	ST_BODY_CLEN  = 3
