@@ -32,7 +32,7 @@ def isFile(f):
 class HttpServer(HttpServerProtocol):
 	def onProtocolHandlerCreate(self):
 		HttpServerProtocol.onProtocolHandlerCreate(self)
-		self.log = log.getSublogger('http-server')
+		self.log = log.getSublogger('http-server', verbosity=eventful.LOGLVL_INFO)
 		
 	def sendError(self, req, code, heads):
 		top, content = errors[code]
@@ -80,6 +80,6 @@ class HttpServer(HttpServerProtocol):
 		self.log.debug(req.headers._headers)
 		self.sendError(req, 403, heads)
 
-application = Application(logger=Logger(verbosity=eventful.LOGLVL_INFO))
+application = Application()
 application.addService(Service(HttpServer, PORT))
 application.run()

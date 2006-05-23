@@ -8,7 +8,7 @@ LOGLVL_INFO,
 LOGLVL_WARN,
 LOGLVL_ERR,
 LOGLVL_CRITICAL,
-) = range(5)
+) = range(1,6)
 
 lvlText = {
 	LOGLVL_DEBUG : 'debug',
@@ -42,8 +42,8 @@ class Logger:
 	error = lambda s, m: s._writelogline(LOGLVL_ERR, m)
 	critical = lambda s, m: s._writelogline(LOGLVL_CRITICAL, m)
 
-	def getSublogger(self, component):
-		copy = Logger(verbosity=self.level)
+	def getSublogger(self, component, verbosity=None):
+		copy = Logger(verbosity=verbosity or self.level)
 		copy.fdlist = self.fdlist
 		copy.component = component
 		return copy
