@@ -7,6 +7,7 @@ import eventful
 from eventful import Application, Service, log, Logger
 from eventful.proto.http import HttpServerProtocol, HttpHeaders
 
+PORT = 10101
 BASE = '/home/jamie'
 DEFAULT = 'index.html'
 SERVER = 'eventful-sample-http/1.0'
@@ -80,5 +81,5 @@ class HttpServer(HttpServerProtocol):
 		self.sendError(req, 403, heads)
 
 application = Application(logger=Logger(verbosity=eventful.LOGLVL_INFO))
-application.addService(Service(HttpServer, 10101))
+application.addService(Service(HttpServer, PORT))
 application.run()

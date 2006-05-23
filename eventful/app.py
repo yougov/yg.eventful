@@ -16,6 +16,7 @@ class Application:
 
 	def run(self):
 		logmod.setCurrentApplication(self)
+		log.info('Starting eventful application')
 		for s in self._services:
 			s.bindAndListen()
 			event.event(eventbase.event_read_boundSocket,
@@ -34,6 +35,8 @@ class Application:
 				log.error("-- Unhandled Exception in main loop --")
 				log.error(traceback.format_exc())
 
+		log.info('Ending eventful application')
+
 	def addService(self, service):
 		self._services.append(service)
 		
@@ -48,6 +51,8 @@ class Service:
 		self.protocolHandler = protocolHandler
 
 	def handleCannotBind(self, reason):
+		log.critical("service at %s:%s cannot bind: %s" % (self.iface or '*', 
+				self.port, reason))
 		raise
 
 	def bindAndListen(self):
