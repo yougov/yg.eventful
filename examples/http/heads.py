@@ -9,6 +9,6 @@ Accepts: one, two, three\r
 And: seven\r
 Content-Type: text/plain'''
 
-h = HttpHeaders(heads)
-h.parse()
+h = HttpHeaders()
+h.parse(heads)
 print h._headers
