@@ -5,15 +5,15 @@ try:
 except ImportError:
 	raise ImportError, "cStringIO is required"
 
-objSIO = cStringIO.StringIO
-typeSIO = cStringIO.OutputType
-def makeSIO(d):
-	t = objSIO()
+_obj_SIO = cStringIO.StringIO
+_type_SIO = cStringIO.OutputType
+def make_SIO(d):
+	t = _obj_SIO()
 	t.write(d)
 	t.seek(0)
 	return t
 
-def getFileLength(f):
+def get_file_length(f):
 	m = f.tell()
 	f.seek(0, 2)
 	r = f.tell()
@@ -22,6 +22,7 @@ def getFileLength(f):
 
 class PipelineLimitReached(Exception): pass
 class PipelineCloseRequest(Exception): pass
+class PipelineClosed(Exception): pass
 	
 class Pipeline:
 	def __init__(self, limit=0):
@@ -29,14 +30,17 @@ class Pipeline:
 		self.limit = limit
 		self.used = 0
 		self.callbacks = []
-		self.wantClose = False
+		self.want_close = False
 
 	def add(self, d):
+		if self.want_close:
+			raise PipelineClosed
+
 		if self.limit > 0 and self.used >= self.limit:
 			raise PipelineLimitReached
 
 		if type(d) is str:
-			if self.line and type(self.line[-1][0]) is typeSIO and \
+			if self.line and type(self.line[-1][0]) is _type_SIO and \
 			(self.limit == 0 or self.line[-1][1] < (self.limit / 2)):
 				fd, l = self.line[-1]
 				m = fd.tell()
@@ -45,21 +49,21 @@ class Pipeline:
 				fd.seek(m)
 				self.line[-1] = [fd, l + len(d)]
 			else:
-				self.line.append([makeSIO(d), len(d)])
+				self.line.append([make_SIO(d), len(d)])
 			self.used += len(d)
 		else:
-			self.line.append([d, getFileLength(d)])
+			self.line.append([d, get_file_length(d)])
 
-	def closeRequest(self):
-		self.wantClose = True
+	def close_request(self):
+		self.want_close = True
 
-	def deferUntilPipelineAvail(self):
+	def defer_until_pipeline_avail(self):
 		d = Deferred()
 		self.callbacks.append(d)
 		return d
 
 	def read(self, amt):
-		if self.line == [] and self.wantClose:
+		if self.line == [] and self.want_close:
 			raise PipelineCloseRequest
 
 		rbuf = []
@@ -67,7 +71,7 @@ class Pipeline:
 		while self.line and read < amt:
 			data = self.line[0][0].read(amt - read)
 			if data == '':
-				if type(self.line[0][0]) is typeSIO:
+				if type(self.line[0][0]) is _type_SIO:
 					self.used -= self.line[0][1]
 				del self.line[0]
 			else:
@@ -84,11 +88,11 @@ class Pipeline:
 		return ''.join(rbuf)
 	
 	def backup(self, d):
-		self.line.insert(0, [makeSIO(d), len(d)])
+		self.line.insert(0, [make_SIO(d), len(d)])
 		self.used += len(d)
 
 	def _get_empty(self):
-		return self.wantClose == False and self.line == []
+		return self.want_close == False and self.line == []
 	empty = property(_get_empty)
 
 	def _get_full(self):

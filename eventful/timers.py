@@ -1,11 +1,11 @@
 import event
 
-def callLater(t, f, *args):
+def call_later(t, f, *args):
 	event.timeout(t, f, *args).add()
 
-def callEvery(t, f, *args):
-	event.timeout(t, _callAgain, t, f, *args).add()
+def call_every(t, f, *args):
+	event.timeout(t, _call_again, t, f, *args).add()
 
-def _callAgain(t, f, *args):
+def _call_again(t, f, *args):
 	f(*args)
-	event.timeout(t, _callAgain, t, f, *args).add()
+	event.timeout(t, _call_again, t, f, *args).add()

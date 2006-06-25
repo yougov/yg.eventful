@@ -1,7 +1,7 @@
 import sys
 import time
 
-currentApplication = [None]
+_current_application = [None]
 (
 LOGLVL_DEBUG,
 LOGLVL_INFO,
@@ -10,7 +10,7 @@ LOGLVL_ERR,
 LOGLVL_CRITICAL,
 ) = range(1,6)
 
-lvlText = {
+_lvl_text = {
 	LOGLVL_DEBUG : 'debug',
 	LOGLVL_INFO : 'info',
 	LOGLVL_WARN : 'warn',
@@ -25,7 +25,7 @@ class Logger:
 		self.level = verbosity
 		self.component = None
 
-	def addLog(self, fd):
+	def add_log(self, fd):
 		self.fdlist.append(fd)
 
 	def _writelogline(self, lvl, message):
@@ -33,7 +33,7 @@ class Logger:
 			for fd in self.fdlist:
 				fd.write('[%s] {%s%s} %s\n' % (time.asctime(), 
 										self.component and ('%s:' % self.component) or '',
-										lvlText[lvl],
+										_lvl_text[lvl],
 										message))
 
 	debug = lambda s, m: s._writelogline(LOGLVL_DEBUG, m)
@@ -42,17 +42,17 @@ class Logger:
 	error = lambda s, m: s._writelogline(LOGLVL_ERR, m)
 	critical = lambda s, m: s._writelogline(LOGLVL_CRITICAL, m)
 
-	def getSublogger(self, component, verbosity=None):
+	def get_sublogger(self, component, verbosity=None):
 		copy = Logger(verbosity=verbosity or self.level)
 		copy.fdlist = self.fdlist
 		copy.component = component
 		return copy
 
-def setCurrentApplication(app):
-	currentApplication[0] = app
+def set_current_application(app):
+	_current_application[0] = app
 
 class _currentLogger:
 	def __getattr__(self, n):
-		return getattr(currentApplication[0].logger, n)
+		return getattr(_current_application[0].logger, n)
 
 log = _currentLogger()

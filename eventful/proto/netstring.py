@@ -1,38 +1,32 @@
-import dispatch
+from eventful.protocol import MessageProtocol
+from eventful.util import encode_netstring
 
-from eventful.protocol import AutoTerminatingProtocol
-from eventful.util import encodeNetstring
+class NetstringProtocol(MessageProtocol):
+	def on_init(self):
+		MessageProtocol.on_init(self)
 
-class NetstringProtocol(AutoTerminatingProtocol):
-	MODE_SZ  = 1
-	MODE_STR = 2
-	def onProtocolHandlerCreate(self):
-		AutoTerminatingProtocol.onProtocolHandlerCreate(self)
-		self.setTerminator(':')
-		self.netprot_mode = self.MODE_SZ
+		# Message part handlers
+		self.add_signal_handler('netstring.message.size', self._on_size_chunk)
+		self.add_signal_handler('netstring.message.data', self._on_data_chunk)
 
-	@dispatch.generic()
-	def onDataChunk(self, data):
-		pass
+		# Alternate between parts
+		self.set_message_iter(self.normal_flow())
 
-	@onDataChunk.when('self.netprot_mode == MODE_SZ')
-	def onSizeChunk(self, data):
+	def normal_flow(self):
+		size_msg = dict(signal='netstring.message.size', sentinel=':')
+		while 1:
+			# Each iter is one message
+			yield size_msg
+			yield dict(signal='netstring.message.data', bytes=self.siz)
+
+	def _on_size_chunk(self, ev, data):
 		try:
-			siz = int(data[:-1])
+			self.siz = int(data[:-1])
 		except ValueError:
-			self.closeCleanly()
-			return
-		self.netprot_mode = self.MODE_STR
-		self.setTerminator(siz)
+			self.close_cleanly()
 
-	@onDataChunk.when('self.netprot_mode == MODE_STR')
-	def onSizeChunk(self, data):
-		self.onNetstringIn(data)
-		self.netprot_mode = self.MODE_SZ
-		self.setTerminator(':')
+	def _on_data_chunk(self, ev, data):
+		self.emit('netstring.in', data)
 
-	def sendNetstring(self, s):
-		self.write(encodeNetstring(s))
-
-	def onNetstringIn(self, data):
-		pass
+	def send_netstring(self, s):
+		self.write(encode_netstring(s))

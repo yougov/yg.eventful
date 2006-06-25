@@ -1,9 +1,16 @@
+import socket
 import event
 
 from eventful import eventbase
 from eventful import pipeline
 
+def no_dbl_prot(f):
+	def real_signal_call(prot, *args, **kw):
+		return f(*args, **kw)
+	return real_signal_call
+
 class ProtocolHandler:
+	_mixins = []
 	def __init__(self, sock, addr):
 		self.sock = sock
 		self.remote_addr = addr
@@ -13,68 +20,102 @@ class ProtocolHandler:
 		self._renable = False
 		self._wenable = False
 
-	def onProtocolHandlerCreate(self):
+		# Mix-Ins
+		self._sighand = {}
+		self._setup_mixins()
+
+		self.emit('prot.new_connection')
+
+	def _setup_mixins(self):
+		for m in self._mixins:
+			for ev, f in m.get_signal_handlers().iteritems():
+				self._sighand.setdefault(ev, []).append(f)
+
+	def add_mixin(self, m):
+		for ev, f in m.get_signal_handlers().iteritems():
+			self._sighand.setdefault(ev, []).append(f)
+
+	def add_signal_handler(self, ev, f):
+		self._sighand.setdefault(ev, []).append(no_dbl_prot(f))
+
+	def emit(self, event, *args, **kw):
+		print 'emit', event
+		try:
+			fs = self._sighand[event]
+		except KeyError:
+			self._sighand[event] = []
+			return
+		for f in fs:
+			print args, kw
+			f(self, event, *args, **kw)
+
+	def on_init(self):
 		pass
 
-	def setReadable(self, val):
+	def set_readable(self, val):
 		if val != self._renable:
 			self._renable = val
+			self.emit('prot.set_readable', val)
 			if val:
 				self._rev.add()
+				print 'EV! event added', id(self._rev), self._rev.pending()
 			elif self._rev.pending():
 				self._rev.delete()
 
-	def setWritable(self, val):
+	def set_writable(self, val):
 		if val != self._wenable:
 			self._wenable = val
+			self.emit('prot.set_writable', val)
 			if val:
 				self._wev.add()
 			elif self._wev.pending():
 				self._wev.delete()
 
-	def onWritable(self):
+	def on_writable(self):
 		pass
 
-	def onConnectionLost(self, reason=None):
+	def on_connection_lost(self, reason=None):
 		pass
 
-	def onRawData(self, data):
+	def on_raw_data(self, data):
 		pass
 
 	def disconnect(self):
 		self.sock.close()
 		self._cleanup()
-		self.onDisconnect()
+		self.on_disconnect()
 
 	def _cleanup(self):
-		self.setWritable(False)
-		self.setReadable(False)
+		self.set_writable(False)
+		self.set_readable(False)
 		self._rev = None
 		self._wev = None
+		self.emit('prot.disconnected')
+		self._sighand = None
 
-	def onDisconnect(self):
+	def on_disconnect(self):
 		pass
 
 class PipelinedProtocolHandler(ProtocolHandler):
 	def __init__(self, *args, **kw):
 		ProtocolHandler.__init__(self, *args, **kw)
-		self._pipeline = self.createPipeline()
-		self.setImplicitWrite(True)
+		self._pipeline = self.create_pipeline()
+		self.set_implicit_write(True)
 
-	def createPipeline(self):
+	def create_pipeline(self):
 		return pipeline.Pipeline()
 
-	def setImplicitWrite(self, val):
-		self._impWrite = val
+	def set_implicit_write(self, val):
+		self._imp_write = val
 
-	def write(self, dataOrFile):
-		self._pipeline.add(dataOrFile)
-		if self._impWrite and not self._wenable:
-			self.setWritable(True)
+	def write(self, data_or_file):
+		self._pipeline.add(data_or_file)
+		if self._imp_write and not self._wenable:
+			self.set_writable(True)
 
-	def onWritable(self):
+	def on_writable(self):
 		if self._pipeline.empty:
-			self.setWritable(False)
+			self.set_writable(False)
 		else:
 			try:
 				data = self._pipeline.read(eventbase.BUFSIZ)
@@ -82,34 +123,45 @@ class PipelinedProtocolHandler(ProtocolHandler):
 				self.disconnect()
 				return
 			bsent = self.sock.send(data)
+			self.emit('prot.bytes_sent', bsent)
 			if bsent != len(data):
 				self._pipeline.backup(data[bsent:])
 			if self._pipeline.empty:
-				self.setWritable(False)
+				self.set_writable(False)
 			else:
-				self.setWritable(True)
+				self.set_writable(True)
 
-	def closeCleanly(self):
-		self._pipeline.closeRequest()
+	def close_cleanly(self):
+		self._pipeline.close_request()
 
-class AutoTerminatingProtocol(PipelinedProtocolHandler):
+class MessageProtocol(PipelinedProtocolHandler):
 	def __init__(self, *args, **kw):
 		PipelinedProtocolHandler.__init__(self, *args, **kw)
 		self._atinbuf = []
 		self._atterm = '\r\n'
 		self._atmark = 0
 		self._eat = 0
+		self._mess_sig = 'prot.message'
 		
-	def setTerminator(self, term):
-		self._atterm = term
+	def request_message(self, signal='prot.message', bytes=0, sentinel='\r\n', _keepiter=False):
+		self._atterm = bytes or sentinel
+		self._mess_sig = signal
+		if not _keepiter and self._mess_iter:
+			self._mess_iter = None
 
-	def onRawData(self, data):
+	def set_message_iter(self, iter):
+		self._mess_iter = iter
+		kw = self._mess_iter.next()
+		kw['_keepiter'] = True
+		self.request_message(**kw)
+
+	def on_raw_data(self, data):
 		self._atinbuf.append(data)
 		self._atmark += len(data)
-		self._scanData()
+		self._scan_data()
 
-	def _scanData(self):
-		'''Look for the terminator.
+	def _scan_data(self):
+		'''Look for the message
 		'''
 		ind = None
 		all = None
@@ -125,17 +177,18 @@ class AutoTerminatingProtocol(PipelinedProtocolHandler):
 			if all is None:
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
-			self.onDataChunk(use)
+			self.emit(self._mess_sig, use)
+			if self._mess_iter:
+				kw = self._mess_iter.next()
+				kw['_keepiter'] = True
+				self.request_message(**kw)
 
 			self._atinbuf = [all[ind + self._eat:]]
 			self._atmark = len(self._atinbuf[0])
 			self._eat = 0
-			self._scanData()
+			self._scan_data()
 		if self._atterm is not None:
-			self.setReadable(True)
+			self.set_readable(True)
 
-	def eatData(self, l):
+	def skip_input(self, l):
 		self._eat += l
-
-	def onDataChunk(self, data):
-		pass

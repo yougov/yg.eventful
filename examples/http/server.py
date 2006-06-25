@@ -1,14 +1,15 @@
 import os
 import mimetypes
 import time
+import event
 
 import tests
 import eventful
-from eventful import Application, Service, log, Logger
+from eventful import Application, Service, log, Logger, ActivityTimeoutMixin
 from eventful.proto.http import HttpServerProtocol, HttpHeaders
 
-PORT = 10101
-BASE = '/home/jamie'
+PORT = 5190
+BASE = '/home/jamwt'
 DEFAULT = 'index.html'
 SERVER = 'eventful-sample-http/1.0'
 
@@ -30,9 +31,15 @@ def isFile(f):
 	return os.path.isfile(f)
 
 class HttpServer(HttpServerProtocol):
+	_mixins = [ActivityTimeoutMixin(input=5)]
 	def onProtocolHandlerCreate(self):
 		HttpServerProtocol.onProtocolHandlerCreate(self)
 		self.log = log.getSublogger('http-server', verbosity=eventful.LOGLVL_INFO)
+		self.addSignalHandler('inactivemixin.timeout', self.onInactiveTimeout)
+
+	def onInactiveTimeout(self, prot, event):
+		print "timeout!"
+		self.disconnect()
 		
 	def sendError(self, req, code, heads):
 		top, content = errors[code]
@@ -80,6 +87,6 @@ class HttpServer(HttpServerProtocol):
 		self.log.debug(req.headers._headers)
 		self.sendError(req, 403, heads)
 
-application = Application()
+application = Application(logger=Logger(verbosity=eventful.LOGLVL_DEBUG))
 application.addService(Service(HttpServer, PORT))
 application.run()

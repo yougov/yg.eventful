@@ -1,14 +1,15 @@
 import tests
-from eventful import Application, Service, AutoTerminatingProtocol
+from eventful import Application, Service, MessageProtocol
 
-class EchoProtocolHandler(AutoTerminatingProtocol):
-	def onProtocolHandlerCreate(self):
-		self.setReadable(True)
+class EchoProtocolHandler(MessageProtocol):
+	def on_init(self):
+		self.set_readable(True)
+		self.add_signal_handler('prot.message', self.message_in)
 
-	def onDataChunk(self, data):
-		self.write(data)
-		self.closeCleanly()
+	def message_in(self, ev, msg):
+		self.write("You said: " + msg)
+		self.close_cleanly()
 
 application = Application()
-application.addService(Service(EchoProtocolHandler, 10101))
+application.add_service(Service(EchoProtocolHandler, 10101))
 application.run()

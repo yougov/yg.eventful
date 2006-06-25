@@ -1,12 +1,12 @@
-def encodeNetstring(s):
+def encode_netstring(s):
 	return '%d:%s' % (len(s), s.encode('utf-8'))
 
-def encodeManyNetstrings(l):
-	return ''.join(map(encodeNetstring, l))
+def encode_many_netstrings(l):
+	return ''.join(map(encode_netstring, l))
 
 class NetstringFormatError(Exception): pass
 
-def decodeNetstrings(s):
+def decode_netstrings(s):
 	out = []
 
 	end = len(s)

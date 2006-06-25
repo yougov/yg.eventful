@@ -3,10 +3,15 @@ from eventful import Application, Service
 from eventful.proto.netstring import NetstringProtocol
 
 class EchoServer(NetstringProtocol):
-	def onNetstringIn(self, s):
-		self.sendNetstring("You said " + s)
-		self.closeCleanly()
+	def on_init(self):
+		NetstringProtocol.on_init(self)
+		self.set_readable(True)
+		self.add_signal_handler('netstring.in', self.on_netstring)
+
+	def on_netstring(self, ev, s):
+		self.send_netstring("You said " + s)
+		self.close_cleanly()
 
 application = Application()
-application.addService(Service(EchoServer, 10101))
+application.add_service(Service(EchoServer, 10101))
 application.run()

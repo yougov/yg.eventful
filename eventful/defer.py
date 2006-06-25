@@ -5,10 +5,10 @@ class Deferred:
 		self.callbacks = []
 		self.errbacks = []
 
-	def addCallback(self, f, *args, **kw):
+	def add_callback(self, f, *args, **kw):
 		self.callbacks.append((f, args, kw))
 
-	def addErrback(self, f, *args, **kw):
+	def add_errback(self, f, *args, **kw):
 		self.errbacks.append((f, args, kw))
 
 	def callback(self, res):
