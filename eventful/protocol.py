@@ -142,6 +142,7 @@ class MessageProtocol(PipelinedProtocolHandler):
 		self._atmark = 0
 		self._eat = 0
 		self._mess_sig = 'prot.message'
+		self._mess_iter = None
 		
 	def request_message(self, signal='prot.message', bytes=0, sentinel='\r\n', _keepiter=False):
 		self._atterm = bytes or sentinel
