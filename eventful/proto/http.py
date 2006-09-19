@@ -1,4 +1,4 @@
-from eventful import MessageProtocol, Deferred
+from eventful import MessageProtocol, Deferred, Client
 
 def parse_request_line(line):
 	items = line.split(' ')
@@ -64,7 +64,7 @@ class HttpHeaders:
 		return self._headers
 
 class HttpRequest:
-	def __init__(self, cmd, url, version, id):
+	def __init__(self, cmd, url, version, id=None):
 		self.cmd = cmd
 		self.url = url
 		self.version = version
@@ -72,15 +72,16 @@ class HttpRequest:
 		self.body = None
 		self.id = id
 		
+	def format(self):	
+		return '%s %s HTTP/%s' % (self.cmd, self.url, self.version)
+		
 class HttpProtocolError(Exception): pass	
 
-class HttpServerProtocol(MessageProtocol):
+class HttpCommon(MessageProtocol):
 	def on_init(self):
 		MessageProtocol.on_init(self)
 		self.set_readable(True)
 		
-		# Standard requests, with potential POST 
-		self.add_signal_handler('http.request_line', self.on_req_line)
 		self.add_signal_handler('http.headers', self.on_headers)
 		self.add_signal_handler('http.body', self.on_body)
 		
@@ -89,47 +90,22 @@ class HttpServerProtocol(MessageProtocol):
 		self.add_signal_handler('http.chunk_body', self.on_chunk_body)
 		self.add_signal_handler('http.chunk_trailer', self.on_chunk_trailer)
 		
-		self.reset()
 		self._req_id = 1
-		self._waiting_responses = {}
-		self._next_response = 1
 		
-	def reset(self):	
-		self._req = None
-		self.request_message('http.request_line', sentinel='\r\n')
-
-	def get_handler_method(self, cmd):
-		try:
-			return getattr(self, 'on_HTTP_%s' % cmd)
-		except AttributeError:
-			return self.on_no_http_handler
-
-	def on_req_line(self, ev, data):
-		cmd, url, version = parse_request_line(data)	
-		self._req = HttpRequest(cmd, url, version, self._req_id)
-		self._req_id += 1
-		self.request_message('http.headers', sentinel='\r\n\r\n')
-
-	def check_expect(self, heads):
-		if self._req.version >= '1.1' and heads.get('Expect') == ['100-continue']:
-			self.write('HTTP/1.1 100 Continue\r\n\r\n')
-
 	def on_headers(self, ev, data):
 		heads = HttpHeaders()
 		heads.parse(data)
 		is_more = self.check_for_http_body(heads)
-		self._req.headers = heads
 		self.check_expect(heads)
 		if not is_more:
-			self.get_handler_method(self._req.cmd)(self._req)
-			self.reset()
+			self.message_in(heads, None)
+		else:	
+			self._headers = heads
 
 	def on_body(self, ev, data):
-		self._req.body = data
-		self.get_handler_method(self._req.cmd)(self._req)
 		self.eatData(2) # trailing CRLF
-		self.reset()
-
+		self.message_in(self._headers, data)
+		
 	def check_for_http_body(self, heads):
 		if heads.get('Transfer-Encoding') == ['chunked']:
 			self._chunks = []
@@ -139,13 +115,6 @@ class HttpServerProtocol(MessageProtocol):
 			self.request_message('http.body', bytes=int(heads['Content-Length'][0]))
 			return True
 		return False
-
-	def on_no_http_handler(self, req):
-		msg = 'No such handler for HTTP command %s' % req.cmd
-		heads = HttpHeaders()
-		heads.add('Content-Type', 'text/plain')
-		heads.add('Content-Length', len(msg))
-		self.send_http_response(req, '501 Not Implemented', heads, msg)
 
 	# "Chunked" transfer encoding states
 	def on_chunk_size(self, ev, data):
@@ -167,15 +136,56 @@ class HttpServerProtocol(MessageProtocol):
 		if not data.strip():
 			# We've reached the end.. phew!
 			data = ''.join(self._chunks)
-			self._req.headers.add('Content-Length', len(data))
-			self._req.headers.remove('Transfer-Encoding')
-			self._req.body = data
+			self._headers.add('Content-Length', len(data))
+			self._headers.remove('Transfer-Encoding')
 			self._chunks = []
-			self.get_handler_method(self._req.cmd)(self._req)
-			self.reset()
+			self.message_in(self._headers, data)
 		else:
 			# Adding a header via the trailer...
-			self._req.headers.add(*tuple(data.split(':', 1)))
+			self._headers.add(*tuple(data.split(':', 1)))
+			
+	def check_expect(self):	
+		pass
+	
+	def _add_chunk(self, data, extra_headers=None):	
+		if data == None:
+			self.write('0\r\n')
+			if extra_headers:
+				self.write(extra_headers.format() + '\r\n')
+			self.write('\r\n')
+			self.chunks_done()
+		else:
+			self.write('%x\r\n%s\r\n' % (len(data), data))
+
+class HttpServerProtocol(HttpCommon):
+	def on_init(self):
+		HttpCommon.on_init(self)
+		self.add_signal_handler('http.request_line', self.on_req_line)
+		self.reset()
+		self._waiting_responses = {}
+		self._next_response = 1
+		
+	def reset(self):	
+		self._req = None
+		self.request_message('http.request_line', sentinel='\r\n')
+
+	def get_handler_method(self, cmd):
+		try:
+			return getattr(self, 'on_HTTP_%s' % cmd)
+		except AttributeError:
+			return self.on_no_http_handler
+		
+	def message_in(self, heads, body):
+		self._req.headers = heads
+		self._req.body = body
+		self.get_handler_method(self._req.cmd)(self._req)
+		self.reset()
+
+	def on_req_line(self, ev, data):
+		cmd, url, version = parse_request_line(data)	
+		self._req = HttpRequest(cmd, url, version, self._req_id)
+		self._req_id += 1
+		self.request_message('http.headers', sentinel='\r\n\r\n')
 
 	def send_http_response(self, req, code, heads, body):
 		if req.id == self._next_response:
@@ -184,6 +194,10 @@ class HttpServerProtocol(MessageProtocol):
 				self._process_waiting_responses()
 		else:
 			self._waiting_responses[req.id] = (req, code, heads, body, None)
+			
+	def check_expect(self, heads):
+		if self._req.version >= '1.1' and heads.get('Expect') == ['100-continue']:
+			self.write('HTTP/1.1 100 Continue\r\n\r\n')
 		
 	def _send_http_response(self, req, code, heads, body, chunked=False):
 		self.write(
@@ -215,14 +229,36 @@ class HttpServerProtocol(MessageProtocol):
 				self._chunk_req = next[0]
 				next[-1].callback(self._add_chunk)
 				
-	def _add_chunk(self, data, extra_headers=None):	
-		if data == None:
-			req = self._chunk_req
-			self.write('0\r\n')
-			if extra_headers:
-				self.write(extra_headers.format() + '\r\n')
-			self.write('\r\n')
-			if req.headers.get('Connection') == ['close']:
-				self.close_cleanly()
-		else:
-			self.write('%x\r\n%s\r\n' % (len(data), data))
+	def chunks_done(self):	
+		req = self._chunk_req
+		if req.headers.get('Connection') == ['close']:
+			self.close_cleanly()
+			
+	def on_no_http_handler(self, req):
+		msg = 'No such handler for HTTP command %s' % req.cmd
+		heads = HttpHeaders()
+		heads.add('Content-Type', 'text/plain')
+		heads.add('Content-Length', len(msg))
+		self.send_http_response(req, '501 Not Implemented', heads, msg)
+			
+class HttpClientProtocol(HttpCommon):
+	def __init__(self, sock, remote_addr, version='1.1'):
+		HttpCommon.__init__(self, sock, remote_addr)
+		self._http_version = version
+		self._callbacks = {}
+		self._req_id = 1
+		
+	def request(self, req, heads, body):	
+		if req.id is None:
+			req.id = self._req_id
+			self._req_id += 1
+		self.write('%s\r\n%s\r\n\r\n' % (req.format(), heads.format()))
+		if body:
+			self.write(body)
+		d = Deferred()	
+		self._callbacks[req.id] = d
+		return d
+	
+class HttpClient(Client):
+	def __init__(self, version='1.1'):
+		Client.__init__(self, HttpClientProtocol, version=version)

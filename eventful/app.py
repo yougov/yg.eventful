@@ -76,3 +76,14 @@ class Service:
 		prot = self.protocol_handler(sock, addr)
 		prot.service = self
 		prot.on_init()
+		
+class Client:
+	def __init__(self, protocol, *args, **kw):
+		self.protocol = protocol
+		self.args = args
+		self.kw = kw
+		
+	def connect(self, addr, port):	
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		sock.connect(addr, port)
+		return protocol(sock, remote_addr, *self.args, **self.kw)
