@@ -31,13 +31,13 @@ def isFile(f):
 	return os.path.isfile(f)
 
 class HttpServer(HttpServerProtocol):
-#	_mixins = [ActivityTimeoutMixin(input=5)]
+	_mixins = [ActivityTimeoutMixin(input=10, output=10)]
 	def on_init(self):
 		HttpServerProtocol.on_init(self)
 		self.log = log.get_sublogger('http-server', verbosity=eventful.LOGLVL_INFO)
-#		self.add_signal_handler('inactivemixin.timeout', self.onInactiveTimeout)
+		self.add_signal_handler('inactivemixin.timeout', self.onInactiveTimeout)
 
-	def onInactiveTimeout(self, prot, event):
+	def onInactiveTimeout(self, event):
 		print "timeout!"
 		self.disconnect()
 		

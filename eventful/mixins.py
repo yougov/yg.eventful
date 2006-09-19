@@ -20,7 +20,6 @@ class ActivityTimeoutMixin(Mixin):
 			self.output = None
 
 	def get_signal_handlers(self):
-		print "get evh with %s" % self
 		new = copy.copy(self)
 		hands = {
 			'prot.new_connection' : new.on_new_connection,
@@ -38,28 +37,36 @@ class ActivityTimeoutMixin(Mixin):
 		prot.emit('inactivemixin.timeout')
 
 	def on_new_connection(self, prot, evt):
-		log.debug("new conn for %s, mixin %s" % (prot, self))
 		self.itimer = None
 		if self.input:
 			self.itimer = event.event(self.timeout,prot)
-		self.otimer = None
+		if self.output:	
+			self.otimer = event.event(self.timeout,prot)
 
 	def on_disconnect(self, prot, evt):
 		if self.itimer:
 			self.itimer.delete()
-
+		if self.otimer:
+			self.otimer.delete()
+			
 		self.itimer = None
 
 	def on_input(self, prot, evt, num):
-		print '>>> input'
 		if self.itimer.pending():
 			self.itimer.delete()
 			self.itimer.add(self.input)
 
 	def on_set_readable(self, prot, evt, val):
-		print '>>readable'
 		self.itimer.delete()
 		if val:
-			print 'add readable'
 			self.itimer.add(self.input)
-			print 'is pending', self.itimer.pending()
+			
+	def on_output(self, prot, evt, num):
+		if self.otimer.pending():
+			self.otimer.delete()
+			self.otimer.add(self.output)
+
+	def on_set_writable(self, prot, evt, val):
+		self.otimer.delete()
+		if val:
+			self.otimer.add(self.output)
