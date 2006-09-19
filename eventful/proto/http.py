@@ -1,4 +1,4 @@
-from eventful import MessageProtocol
+from eventful import MessageProtocol, Deferred
 
 def parse_request_line(line):
 	items = line.split(' ')
@@ -64,12 +64,15 @@ class HttpHeaders:
 		return self._headers
 
 class HttpRequest:
-	def __init__(self, cmd, url, version):
+	def __init__(self, cmd, url, version, id):
 		self.cmd = cmd
 		self.url = url
 		self.version = version
 		self.headers = None
 		self.body = None
+		self.id = id
+		
+class HttpProtocolError(Exception): pass	
 
 class HttpServerProtocol(MessageProtocol):
 	def on_init(self):
@@ -87,6 +90,9 @@ class HttpServerProtocol(MessageProtocol):
 		self.add_signal_handler('http.chunk_trailer', self.on_chunk_trailer)
 		
 		self.reset()
+		self._req_id = 1
+		self._waiting_responses = {}
+		self._next_response = 1
 		
 	def reset(self):	
 		self._req = None
@@ -100,7 +106,8 @@ class HttpServerProtocol(MessageProtocol):
 
 	def on_req_line(self, ev, data):
 		cmd, url, version = parse_request_line(data)	
-		self._req = HttpRequest(cmd, url, version)
+		self._req = HttpRequest(cmd, url, version, self._req_id)
+		self._req_id += 1
 		self.request_message('http.headers', sentinel='\r\n\r\n')
 
 	def check_expect(self, heads):
@@ -140,13 +147,6 @@ class HttpServerProtocol(MessageProtocol):
 		heads.add('Content-Length', len(msg))
 		self.send_http_response(req, '501 Not Implemented', heads, msg)
 
-	def send_http_response(self, req, code, heads, body):
-		self.write(
-'''HTTP/%s %s\r\n%s\r\n\r\n''' % (req.version, code, heads.format()))
-		self.write(body)
-		if req.version < '1.1' or req.headers.get('Connection') == ['close']:
-			self.close_cleanly()
-
 	# "Chunked" transfer encoding states
 	def on_chunk_size(self, ev, data):
 		if ';' in data:
@@ -176,3 +176,53 @@ class HttpServerProtocol(MessageProtocol):
 		else:
 			# Adding a header via the trailer...
 			self._req.headers.add(*tuple(data.split(':', 1)))
+
+	def send_http_response(self, req, code, heads, body):
+		if req.id == self._next_response:
+			self._send_http_response(req, code, heads, body)
+			if self._waiting_responses:
+				self._process_waiting_responses()
+		else:
+			self._waiting_responses[req.id] = (req, code, heads, body, None)
+		
+	def _send_http_response(self, req, code, heads, body, chunked=False):
+		self.write(
+'''HTTP/%s %s\r\n%s\r\n\r\n''' % (req.version, code, heads.format()))
+		if body:
+			self.write(body)
+		if not chunked and (req.version < '1.1' or req.headers.get('Connection') == ['close']):
+			self.close_cleanly()
+		self._next_response += 1
+		
+	def start_chunked_response(self, req, code, heads):	
+		if req.version < '1.1':
+			raise HttpProtocolError, 'Cannot send a chunked response back to a < 1.1 client'
+			
+		if req.id == self._next_response:
+			self._chunk_req = req
+			self._send_http_response(req, code, heads, None, True)
+			return self._add_chunk
+		else:
+			d = Deferred()
+			self._waiting_responses[req.id] = (req, code, heads, None, d)
+			return d
+		
+	def _process_waiting_responses(self):
+		while self._next_response in self._waiting_responses:
+			next = self._waiting_responses.pop(self._next_response)
+			self._send_http_response(*next)
+			if next[-1]:
+				self._chunk_req = next[0]
+				next[-1].callback(self._add_chunk)
+				
+	def _add_chunk(self, data, extra_headers=None):	
+		if data == None:
+			req = self._chunk_req
+			self.write('0\r\n')
+			if extra_headers:
+				self.write(extra_headers.format() + '\r\n')
+			self.write('\r\n')
+			if req.headers.get('Connection') == ['close']:
+				self.close_cleanly()
+		else:
+			self.write('%x\r\n%s\r\n' % (len(data), data))
