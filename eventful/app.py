@@ -8,6 +8,7 @@ from eventful import logmod, log
 
 class Application:
 	def __init__(self, logger=None):
+		self._run = False
 		if logger is None:
 			logger = logmod.Logger()
 		self.logger = logger
@@ -15,6 +16,7 @@ class Application:
 		self._services = []
 
 	def run(self):
+		self._run = True
 		logmod.set_current_application(self)
 		log.info('Starting eventful application')
 		for s in self._services:
@@ -22,7 +24,7 @@ class Application:
 			event.event(eventbase.event_read_bound_socket,
 			handle=s.sock, evtype=event.EV_READ | event.EV_PERSIST, arg=s).add()
 
-		while True:
+		while self._run:
 			try:
 				event.dispatch()
 			except SystemExit:
@@ -39,6 +41,9 @@ class Application:
 
 	def add_service(self, service):
 		self._services.append(service)
+		
+	def halt(self):	
+		self._run = False
 		
 class Service:
 	LQUEUE_SIZ = 500
@@ -84,6 +89,10 @@ class Client:
 		self.kw = kw
 		
 	def connect(self, addr, port):	
+		remote_addr = (addr, port)
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.connect(addr, port)
-		return protocol(sock, remote_addr, *self.args, **self.kw)
+		sock.connect(remote_addr)
+		p = self.protocol(sock, remote_addr, *self.args, **self.kw)
+		p.on_init()
+		p.service = None
+		return p

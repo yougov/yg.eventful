@@ -1,3 +1,5 @@
+import sys
+
 from eventful import MessageProtocol, Deferred, Client
 
 def parse_request_line(line):
@@ -11,11 +13,7 @@ def parse_request_line(line):
 class HttpHeaders:
 	def __init__(self):
 		self._headers = {}
-		self.items = self._headers.items
-		self.keys = self._headers.keys
-		self.values = self._headers.values
-		self.itervalues = self._headers.itervalues
-		self.iteritems = self._headers.iteritems
+		self.link()
 
 	def add(self, k, v):
 		self._headers.setdefault(k.lower(), []).append(str(v).strip())
@@ -30,6 +28,13 @@ class HttpHeaders:
 			for v in vs:
 				s.append('%s: %s' % (h.title(), v))
 		return '\r\n'.join(s)
+	
+	def link(self):
+		self.items = self._headers.items
+		self.keys = self._headers.keys
+		self.values = self._headers.values
+		self.itervalues = self._headers.itervalues
+		self.iteritems = self._headers.iteritems
 
 	def parse(self, rawInput):
 		ws = ' \t'
@@ -50,6 +55,7 @@ class HttpHeaders:
 		if curhead:
 			heads.setdefault(curhead, []).append(' '.join(curbuf))
 		self._headers = heads
+		self.link()
 
 	def __contains__(self, k):
 		return k.lower() in self._headers
@@ -90,8 +96,6 @@ class HttpCommon(MessageProtocol):
 		self.add_signal_handler('http.chunk_body', self.on_chunk_body)
 		self.add_signal_handler('http.chunk_trailer', self.on_chunk_trailer)
 		
-		self._req_id = 1
-		
 	def on_headers(self, ev, data):
 		heads = HttpHeaders()
 		heads.parse(data)
@@ -103,7 +107,6 @@ class HttpCommon(MessageProtocol):
 			self._headers = heads
 
 	def on_body(self, ev, data):
-		self.eatData(2) # trailing CRLF
 		self.message_in(self._headers, data)
 		
 	def check_for_http_body(self, heads):
@@ -144,7 +147,7 @@ class HttpCommon(MessageProtocol):
 			# Adding a header via the trailer...
 			self._headers.add(*tuple(data.split(':', 1)))
 			
-	def check_expect(self):	
+	def check_expect(self, heads):	
 		pass
 	
 	def _add_chunk(self, data, extra_headers=None):	
@@ -163,6 +166,7 @@ class HttpServerProtocol(HttpCommon):
 		self.add_signal_handler('http.request_line', self.on_req_line)
 		self.reset()
 		self._waiting_responses = {}
+		self._req_id = 1
 		self._next_response = 1
 		
 	def reset(self):	
@@ -241,23 +245,73 @@ class HttpServerProtocol(HttpCommon):
 		heads.add('Content-Length', len(msg))
 		self.send_http_response(req, '501 Not Implemented', heads, msg)
 			
+class HttpResponse:
+	def __init__(self, code, status, version):
+		self.code = code
+		self.status = status
+		self.version = version
+		self.headers = None
+		
+	def __str__(self):	
+		def p():
+			yield "HTTP/%s %s %s\n" % (self.version, self.code, self.status)
+			yield "\nHeaders\n-------------\n"
+			for h, v in self.headers.iteritems():
+				yield "%s: %s\n" % (h, ','.join(v))
+		return ''.join(list(p()))
+
+def parse_response_line(line):	
+	ver, code, status  = line.strip().split(' ', 2)
+	ver = ver.split('/')[-1]
+	code = int(code)
+	return code, status, ver
+		
 class HttpClientProtocol(HttpCommon):
 	def __init__(self, sock, remote_addr, version='1.1'):
 		HttpCommon.__init__(self, sock, remote_addr)
 		self._http_version = version
-		self._callbacks = {}
-		self._req_id = 1
+		self._callbacks = []
+		self._closemark = False
 		
-	def request(self, req, heads, body):	
-		if req.id is None:
-			req.id = self._req_id
-			self._req_id += 1
+	def on_init(self):	
+		HttpCommon.on_init(self)
+		self.add_signal_handler('http.response_line', self.on_response_line)
+		self.reset()
+		
+	def reset(self):	
+		self.request_message('http.response_line', sentinel='\r\n')
+		self.resp = None
+		
+	def request(self, cmd, path, heads, body):	
+		req = HttpRequest(cmd, path, self._http_version)
 		self.write('%s\r\n%s\r\n\r\n' % (req.format(), heads.format()))
 		if body:
 			self.write(body)
 		d = Deferred()	
-		self._callbacks[req.id] = d
+		self._callbacks.append(d)
 		return d
+	
+	def on_response_line(self, ev, data):
+		self.resp = HttpResponse(*parse_response_line(data))
+		self.request_message('http.headers', sentinel='\r\n\r\n')
+	
+	def message_in(self, headers, body):
+		self.resp.headers = headers
+		if body == None and headers.get('Connection') == ['close']:
+			if self.closed:
+				self.finish_message()
+			else:	
+				self.add_signal_handler('prot.disconnected', self.finish_message)
+				self.request_message(bytes=sys.maxint)
+		else:	
+			d = self._callbacks.pop(0)
+			d.callback((self.resp, body))
+			self.reset()
+		
+	def finish_message(self, ev):	
+		body = self.pop_buffer()
+		d = self._callbacks.pop(0)
+		d.callback((self.resp, body))
 	
 class HttpClient(Client):
 	def __init__(self, version='1.1'):

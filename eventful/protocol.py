@@ -22,6 +22,7 @@ class ProtocolHandler:
 		# Mix-Ins
 		self._sighand = {}
 		self._setup_mixins()
+		self.closed = False
 
 		self.emit('prot.new_connection')
 
@@ -88,6 +89,7 @@ class ProtocolHandler:
 		self._wev = None
 		self.emit('prot.disconnected')
 		self._sighand = None
+		self.closed = True
 
 	def on_disconnect(self):
 		pass
@@ -163,7 +165,7 @@ class MessageProtocol(PipelinedProtocolHandler):
 		ind = None
 		all = None
 		if type(self._atterm) is int:
-			if self._atmark > self._atterm:
+			if self._atmark >= self._atterm:
 				ind = self._atterm
 		else:
 			all = ''.join(self._atinbuf)
@@ -189,3 +191,9 @@ class MessageProtocol(PipelinedProtocolHandler):
 
 	def skip_input(self, l):
 		self._eat += l
+		
+	def pop_buffer(self):
+		all = ''.join(self._atinbuf)
+		self._atinbuf = []
+		self._atmark = 0
+		return all
