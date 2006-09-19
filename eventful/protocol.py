@@ -1,6 +1,5 @@
 import socket
 import event
-
 from eventful import eventbase
 from eventful import pipeline
 
@@ -39,14 +38,12 @@ class ProtocolHandler:
 		self._sighand.setdefault(ev, []).append(no_dbl_prot(f))
 
 	def emit(self, event, *args, **kw):
-		print 'emit', event
 		try:
 			fs = self._sighand[event]
 		except KeyError:
 			self._sighand[event] = []
 			return
 		for f in fs:
-			print args, kw
 			f(self, event, *args, **kw)
 
 	def on_init(self):
@@ -58,7 +55,6 @@ class ProtocolHandler:
 			self.emit('prot.set_readable', val)
 			if val:
 				self._rev.add()
-				print 'EV! event added', id(self._rev), self._rev.pending()
 			elif self._rev.pending():
 				self._rev.delete()
 

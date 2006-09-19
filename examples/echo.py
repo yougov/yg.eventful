@@ -8,7 +8,6 @@ class EchoProtocolHandler(MessageProtocol):
 
 	def message_in(self, ev, msg):
 		self.write("You said: " + msg)
-		self.close_cleanly()
 
 application = Application()
 application.add_service(Service(EchoProtocolHandler, 10101))

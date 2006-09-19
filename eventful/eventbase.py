@@ -28,7 +28,6 @@ def event_read_handler(handler):
 	the request/read data to the appropriate requesthandler.
 	'''
 	disconnect_reason = None
-	print 'raw read'
 	try:
 		data = handler.sock.recv(BUFSIZ)
 	except socket.error, e:
