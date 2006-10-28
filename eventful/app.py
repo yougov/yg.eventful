@@ -5,6 +5,7 @@ import traceback
 from eventful import eventbase
 from eventful import protocol
 from eventful import logmod, log
+from eventful import timers
 
 class Application:
 	def __init__(self, logger=None):
@@ -23,6 +24,10 @@ class Application:
 			s.bind_and_listen()
 			event.event(eventbase.event_read_bound_socket,
 			handle=s.sock, evtype=event.EV_READ | event.EV_PERSIST, arg=s).add()
+
+		def allow_signals():
+			pass
+		timers.call_every(1.0, allow_signals)
 
 		while self._run:
 			try:
