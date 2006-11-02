@@ -28,7 +28,8 @@ class Application:
 		def allow_signals():
 			pass
 		timers.call_every(1.0, allow_signals)
-
+		
+		self.setup()
 		while self._run:
 			try:
 				event.dispatch()
@@ -49,6 +50,9 @@ class Application:
 		
 	def halt(self):	
 		self._run = False
+
+	def setup(self):
+		pass
 		
 class Service:
 	LQUEUE_SIZ = 500

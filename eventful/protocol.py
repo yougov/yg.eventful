@@ -71,28 +71,21 @@ class ProtocolHandler:
 	def on_writable(self):
 		pass
 
-	def on_connection_lost(self, reason=None):
-		pass
-
 	def on_raw_data(self, data):
 		pass
 
 	def disconnect(self):
 		self.sock.close()
 		self._cleanup()
-		self.on_disconnect()
 
 	def _cleanup(self):
 		self.set_writable(False)
 		self.set_readable(False)
 		self._rev = None
 		self._wev = None
+		self.closed = True
 		self.emit('prot.disconnected')
 		self._sighand = None
-		self.closed = True
-
-	def on_disconnect(self):
-		pass
 
 class PipelinedProtocolHandler(ProtocolHandler):
 	def __init__(self, *args, **kw):
@@ -177,6 +170,8 @@ class MessageProtocol(PipelinedProtocolHandler):
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
 			self.emit(self._mess_sig, use)
+			if self.closed:
+				return
 			if self._mess_iter:
 				kw = self._mess_iter.next()
 				kw['_keepiter'] = True

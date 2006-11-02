@@ -19,7 +19,6 @@ def event_write_handler(handler):
 		handler.on_writable()
 	except socket.error:
 		handler._cleanup()
-		handler.on_connection_lost()
 	if handler._wenable:
 		return handler._wev
 
@@ -36,7 +35,6 @@ def event_read_handler(handler):
 		
 	if not data:
 		handler._cleanup()
-		handler.on_connection_lost(disconnect_reason)
 	else:
 		handler.emit('core.bytes_received', len(data))
 		handler.on_raw_data(data)
