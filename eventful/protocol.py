@@ -76,15 +76,17 @@ class ProtocolHandler:
 
 	def disconnect(self):
 		self.sock.close()
-		self._cleanup()
+		self._close()
 
-	def _cleanup(self):
+	def _close(self, client=False, reason=None):
 		self.set_writable(False)
 		self.set_readable(False)
 		self._rev = None
 		self._wev = None
 		self.closed = True
 		self.emit('prot.disconnected')
+		if client:
+			self.emit('prot.remote_dropped', reason)
 		self._sighand = None
 
 class PipelinedProtocolHandler(ProtocolHandler):
@@ -134,6 +136,7 @@ class MessageProtocol(PipelinedProtocolHandler):
 		self._eat = 0
 		self._mess_sig = 'prot.message'
 		self._mess_iter = None
+		self.add_signal_handler("prot.set_readable", self._set_readable)
 		
 	def request_message(self, signal='prot.message', bytes=0, sentinel='\r\n', _keepiter=False):
 		self._atterm = bytes or sentinel
@@ -151,6 +154,10 @@ class MessageProtocol(PipelinedProtocolHandler):
 		self._atinbuf.append(data)
 		self._atmark += len(data)
 		self._scan_data()
+
+	def _set_readable(self, evt, readable):
+		if readable and self._atinbuf:
+			self._scan_data()
 
 	def _scan_data(self):
 		'''Look for the message
@@ -170,8 +177,6 @@ class MessageProtocol(PipelinedProtocolHandler):
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
 			self.emit(self._mess_sig, use)
-			if self.closed:
-				return
 			if self._mess_iter:
 				kw = self._mess_iter.next()
 				kw['_keepiter'] = True
@@ -180,6 +185,8 @@ class MessageProtocol(PipelinedProtocolHandler):
 			self._atinbuf = [all[ind + self._eat:]]
 			self._atmark = len(self._atinbuf[0])
 			self._eat = 0
+			if self.closed or not self._renable:
+				return
 			self._scan_data()
 		if self._atterm is not None:
 			self.set_readable(True)

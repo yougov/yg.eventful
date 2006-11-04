@@ -9,7 +9,7 @@ from eventful import Application, Service, log, Logger, ActivityTimeoutMixin
 from eventful.proto.http import HttpServerProtocol, HttpHeaders
 
 PORT = 5190
-BASE = '/home/jamie'
+BASE = '/home/jamwt'
 DEFAULT = 'index.html'
 SERVER = 'eventful-sample-http/1.0'
 
@@ -54,7 +54,7 @@ class HttpServer(HttpServerProtocol):
 
 	def on_HTTP_GET(self, req):
 		heads = self.getStandardHeaders()
-#		self.log.info("%s -- GET %s" % (self.remote_addr[0], req.url))
+		self.log.info("%s -- GET %s" % (self.remote_addr[0], req.url))
 		fn = os.path.join(BASE, req.url[1:])
 		if not fn or fn[-1] == '/':
 			fn += DEFAULT
