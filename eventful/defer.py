@@ -26,6 +26,7 @@ class Deferred:
 
 	def errback(self, e):
 		p = e
+		if not self.errbacks:
+			raise e
 		for e, a, k in self.errbacks:
 			p = e(p, *a, **k)
-		#XXX -- unhandled exception in errback?

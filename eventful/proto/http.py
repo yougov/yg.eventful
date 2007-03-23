@@ -1,4 +1,4 @@
-import sys
+import sys, socket
 
 from eventful import MessageProtocol, Deferred, Client
 
@@ -312,6 +312,9 @@ class HttpClientProtocol(HttpCommon):
 		body = self.pop_buffer()
 		d = self._callbacks.pop(0)
 		d.callback((self.resp, body))
+		while self._callbacks:
+			d = self._callbacks.pop(0)
+			d.errback(socket.error("connection closed"))
 	
 class HttpClient(Client):
 	def __init__(self, version='1.1'):
