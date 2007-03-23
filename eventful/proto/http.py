@@ -246,11 +246,12 @@ class HttpServerProtocol(HttpCommon):
 		self.send_http_response(req, '501 Not Implemented', heads, msg)
 			
 class HttpResponse:
-	def __init__(self, code, status, version):
+	def __init__(self, code, status, version, request=None):
 		self.code = code
 		self.status = status
 		self.version = version
 		self.headers = None
+		self.request = request
 		
 	def __str__(self):	
 		def p():
@@ -288,7 +289,7 @@ class HttpClientProtocol(HttpCommon):
 		if body:
 			self.write(body)
 		d = Deferred()	
-		self._callbacks.append(d)
+		self._callbacks.append((d, req))
 		return d
 	
 	def on_response_line(self, ev, data):
@@ -304,16 +305,18 @@ class HttpClientProtocol(HttpCommon):
 				self.add_signal_handler('prot.disconnected', self.finish_message)
 				self.request_message(bytes=sys.maxint)
 		else:	
-			d = self._callbacks.pop(0)
+			d, req = self._callbacks.pop(0)
+			self.resp.request = req
 			d.callback((self.resp, body))
 			self.reset()
 		
 	def finish_message(self, ev):	
 		body = self.pop_buffer()
-		d = self._callbacks.pop(0)
+		d, req = self._callbacks.pop(0)
+		self.resp.request = req
 		d.callback((self.resp, body))
 		while self._callbacks:
-			d = self._callbacks.pop(0)
+			d, req = self._callbacks.pop(0)
 			d.errback(socket.error("connection closed"))
 	
 class HttpClient(Client):

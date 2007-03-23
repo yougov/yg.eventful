@@ -26,7 +26,9 @@ class Application:
 			handle=s.sock, evtype=event.EV_READ | event.EV_PERSIST, arg=s).add()
 
 		def allow_signals():
-			pass
+			if not self._run:
+				raise SystemExit
+
 		timers.call_every(1.0, allow_signals)
 		
 		self.setup()
