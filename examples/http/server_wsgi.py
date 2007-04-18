@@ -75,7 +75,6 @@ class WSGIHttpServer(HttpServerProtocol):
 
 	def on_request(self, req):
 		env = build_wsgi_env(req, self.service.port, self.log)
-		self.sr_called = False
 		self.outbuf = []
 		for output in self.service.wsgi_callable(env, self._start_response):
 			self.write_output(output)
@@ -90,7 +89,7 @@ class WSGIHttpServer(HttpServerProtocol):
 		self.send_http_response(req, code, heads, body)
 
 	def get_handler_method(self, verb):
-		return self. on_request
+		return self.on_request
 
 class WSGIApplication(Application):
 	def __init__(self, wsgi_callable, port=80, iface=''):
