@@ -215,6 +215,7 @@ class HttpServerProtocol(HttpCommon):
 	def start_chunked_response(self, req, code, heads):	
 		if req.version < '1.1':
 			raise HttpProtocolError, 'Cannot send a chunked response back to a < 1.1 client'
+		heads.add('Transfer-Encoding', 'chunked')
 			
 		if req.id == self._next_response:
 			self._chunk_req = req
