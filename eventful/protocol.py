@@ -162,17 +162,19 @@ class MessageProtocol(PipelinedProtocolHandler):
 	def _scan_data(self):
 		'''Look for the message
 		'''
-		ind = None
-		all = None
-		if type(self._atterm) is int:
-			if self._atmark >= self._atterm:
-				ind = self._atterm
-		else:
-			all = ''.join(self._atinbuf)
-			res = all.find(self._atterm)
-			if res != -1:
-				ind = res + len(self._atterm)
-		if ind is not None:
+		while 1:
+			ind = None
+			all = None
+			if type(self._atterm) is int:
+				if self._atmark >= self._atterm:
+					ind = self._atterm
+			else:
+				all = ''.join(self._atinbuf)
+				res = all.find(self._atterm)
+				if res != -1:
+					ind = res + len(self._atterm)
+			if ind is None:
+				break
 			if all is None:
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
@@ -187,7 +189,6 @@ class MessageProtocol(PipelinedProtocolHandler):
 			self._eat = 0
 			if self.closed or not self._renable:
 				return
-			self._scan_data()
 		if self._atterm is not None:
 			self.set_readable(True)
 
