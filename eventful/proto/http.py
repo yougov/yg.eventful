@@ -186,7 +186,6 @@ class HttpServerProtocol(HttpCommon):
 		self.reset()
 
 	def on_req_line(self, ev, data):
-		print 'reqline', repr(data)
 		cmd, url, version = parse_request_line(data)	
 		self._req = HttpRequest(cmd, url, version, self._req_id)
 		self._req_id += 1
