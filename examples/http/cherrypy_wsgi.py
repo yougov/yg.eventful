@@ -1,8 +1,8 @@
 LOG_TO_SCREEN=False
 PORT=7080
-# Cherrypy 2.2.1
+# Cherrypy 3
 from server_wsgi import WSGIApplication
-from cherrypy._cpwsgi import wsgiApp as cpwsgi_app
+from cherrypy._cpwsgi import CPWSGIApp as cpwsgi_app
 import cherrypy
 
 big_s = "Hello, World!" * 50000
@@ -14,7 +14,7 @@ class Test:
 	@cherrypy.expose
 	def big(self):
 		return big_s
-cherrypy.root = Test()
+cherrypy.tree.mount(Test())
 
 if __name__ == '__main__':
 	import sys
@@ -33,5 +33,5 @@ if __name__ == '__main__':
 		cherrypy.config.update({
 			'server.protocol_version' : 'HTTP/1.1',
 			})
-		cherrypy.server.start(init_only=True, server_class=None)
+		cherrypy.engine.start(blocking=False)
 		WSGIApplication(cpwsgi_app, PORT).run()
