@@ -55,8 +55,10 @@ class ProtocolHandler:
 		except KeyError:
 			self._sighand[event] = []
 			return
+		r = None
 		for f in fs:
-			f(self, event, *args, **kw)
+			r = f(self, event, *args, **kw)
+		return r
 
 	def on_init(self):
 		pass
