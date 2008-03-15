@@ -2,6 +2,14 @@ import sys, socket
 
 from eventful import MessageProtocol, Deferred, Client
 
+response_codes = {
+	404 : ('404 Not Found', 'The specified resource was not found'),
+	403 : ('403 Permission Denied', 'Access is denied to this resource'),
+	500 : ('500 Application Error', 'The server encountered an error while processing your request'),
+	501 : ('501 Not Implemented', 'The server is not programmed to handle to your request'),
+	200 : ('200 OK', ''),
+}
+
 def parse_request_line(line):
 	items = line.split(' ')
 	items[0] = items[0].upper()
@@ -323,3 +331,75 @@ class HttpClientProtocol(HttpCommon):
 class HttpClient(Client):
 	def __init__(self, version='1.1'):
 		Client.__init__(self, HttpClientProtocol, version=version)
+
+from urlparse import urlparse
+import cgi
+
+class RESTServer(HttpServerProtocol):
+	standard_header_set = {
+		'Server' : 'eventful-rest-server',
+	}
+
+	@property
+	def standard_headers(self):
+		heads = HttpHeaders()
+		for k, v in self.standard_header_set.iteritems():
+			heads.add(k, v)
+		return heads
+
+	def send_standard_response(self, req, code, content=None, ct=None):
+		heads = self.standard_headers
+		if content:
+			heads.add('Content-Type', ct)
+		else:
+			content = response_codes[code][-1]
+		heads.add('Content-Length', len(content))
+		top = response_codes[code][0]
+		self.send_http_response(req, top, heads, content)
+
+	def handle_object(self, req, method):
+		parts = urlparse(req.url)
+		path = parts.path
+		segments = path[1:].split('/')
+		object = segments[0]
+		if not object:
+			object = '__default__'
+		sigstr = 'rest.%s.%s' % (method, object)
+		if not self.will_handle(sigstr):
+			self.send_standard_response(req, 501)
+		else:
+			try:
+				query_dict = cgi.parse_qs(parts.query)
+				result = self.emit(sigstr, req, *(segments[1:]), **query_dict) 
+				if type(result) is int:
+					self.send_standard_response(req, result)
+				elif result is None:
+					self.send_standard_response(req, 500)
+					assert result != None
+				else:
+					code, ct, content = result
+					self.send_standard_response(req, code, content, ct)
+			except:
+				self.send_standard_response(req, 500)
+				raise
+
+	def on_HTTP_GET(self, req):
+		self.handle_object(req, 'GET')
+
+	def on_HTTP_POST(self, req):
+		self.handle_object(req, 'POST')
+
+	def on_HTTP_HEAD(self, req):
+		self.handle_object(req, 'HEAD')
+
+	def on_HTTP_PUT(self, req):
+		self.handle_object(req, 'PUT')
+
+	def on_HTTP_DELETE(self, req):
+		self.handle_object(req, 'DELETE')
+
+	def on_HTTP_TRACE(self, req):
+		self.handle_object(req, 'TRACE')
+
+	def on_HTTP_CONNECT(self, req):
+		self.handle_object(req, 'CONNECT')
