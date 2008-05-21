@@ -2,7 +2,7 @@ LOG_TO_SCREEN=False
 PORT=7080
 # Cherrypy 3
 from server_wsgi import WSGIApplication
-from cherrypy._cpwsgi import CPWSGIApp as cpwsgi_app
+from cherrypy import Application
 import cherrypy
 
 big_s = "Hello, World!" * 50000
@@ -17,7 +17,7 @@ class Test:
 cherrypy.tree.mount(Test())
 
 if __name__ == '__main__':
-	import sys
+	import sys, os
 	cherrypy.config.update({
 		'server.environment' : 'production',
 		'server.log_to_screen' : LOG_TO_SCREEN,
@@ -33,5 +33,12 @@ if __name__ == '__main__':
 		cherrypy.config.update({
 			'server.protocol_version' : 'HTTP/1.1',
 			})
-		cherrypy.engine.start(blocking=False)
-		WSGIApplication(cpwsgi_app, PORT).run()
+		app = Application(Test())
+		app.merge({
+			'/static' : {
+				'tools.staticdir.on' : True,
+				'tools.staticdir.dir' : os.path.abspath('./static'),
+			}
+				
+		})
+		WSGIApplication(app, PORT).run()

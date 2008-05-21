@@ -8,6 +8,8 @@ response_codes = {
 	500 : ('500 Application Error', 'The server encountered an error while processing your request'),
 	501 : ('501 Not Implemented', 'The server is not programmed to handle to your request'),
 	200 : ('200 OK', ''),
+	202 : ('202 Accepted', ''),
+	205 : ('205 Reset Content', ''),
 }
 
 def parse_request_line(line):
@@ -365,20 +367,34 @@ class RESTServer(HttpServerProtocol):
 		if not object:
 			object = '__default__'
 		sigstr = 'rest.%s.%s' % (method, object)
+		print sigstr
 		if not self.will_handle(sigstr):
 			self.send_standard_response(req, 501)
 		else:
 			try:
 				query_dict = cgi.parse_qs(parts.query)
+				if req.body:
+					query_dict.update(cgi.parse_qs(req.body))
 				result = self.emit(sigstr, req, *(segments[1:]), **query_dict) 
-				if type(result) is int:
-					self.send_standard_response(req, result)
-				elif result is None:
+				def respond(result):
+					if type(result) is int:
+						self.send_standard_response(req, result)
+					elif result is None:
+						self.send_standard_response(req, 500)
+						assert result != None
+					else:
+						code, ct, content = result
+						self.send_standard_response(req, code, content, ct)
+				def error(e):
 					self.send_standard_response(req, 500)
-					assert result != None
+					print e # we can do better XXX
+
+				if isinstance(result, Deferred):
+					# Comet-like behavior
+					result.add_callback(respond)
+					result.add_errback(error)
 				else:
-					code, ct, content = result
-					self.send_standard_response(req, code, content, ct)
+					respond(result)
 			except:
 				self.send_standard_response(req, 500)
 				raise

@@ -1,6 +1,6 @@
 ## thank you, twisted. 
 
-class Deferred:
+class Deferred(object):
 	def __init__(self):
 		self.callbacks = []
 		self.errbacks = []
