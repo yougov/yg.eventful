@@ -367,7 +367,7 @@ class RESTServer(HttpServerProtocol):
 		if not object:
 			object = '__default__'
 		sigstr = 'rest.%s.%s' % (method, object)
-		print sigstr
+		#print sigstr
 		if not self.will_handle(sigstr):
 			self.send_standard_response(req, 501)
 		else:
