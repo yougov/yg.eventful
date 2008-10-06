@@ -7,9 +7,11 @@ class Deferred(object):
 
 	def add_callback(self, f, *args, **kw):
 		self.callbacks.append((f, args, kw))
+		return self
 
 	def add_errback(self, f, *args, **kw):
 		self.errbacks.append((f, args, kw))
+		return self
 
 	def callback(self, res):
 		try:

@@ -11,6 +11,8 @@ def no_dbl_prot(f):
 class ProtocolHandler:
 	_mixins = []
 	def __init__(self, sock, addr):
+		self.service = None
+		self.application = None
 		self.sock = sock
 		self.remote_addr = addr
 
@@ -101,6 +103,8 @@ class ProtocolHandler:
 		if client:
 			self.emit('prot.remote_dropped', reason)
 		self._sighand = None
+		self.service = None
+		self.application = None
 
 class PipelinedProtocolHandler(ProtocolHandler):
 	def __init__(self, *args, **kw):

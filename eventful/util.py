@@ -1,3 +1,6 @@
+import os
+import fcntl
+
 def encode_netstring(s):
 	return '%d:%s' % (len(s), s.encode('utf-8'))
 
@@ -34,3 +37,17 @@ def decode_netstrings(s):
 			("Segment body doesn't seem to be UTF-8 near byte %d" % run)
 		run += segl
 	return out
+
+# from twisted
+def set_nonblocking(fd):
+	flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+	fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+def until_concludes(f, *a, **kw):
+	while True:
+		try:
+			return f(*a, **kw)
+		except (IOError, OSError), e:
+			if e.args[0] == errno.EINTR:
+				continue
+			raise
