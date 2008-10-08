@@ -40,6 +40,9 @@ class ProtocolHandler:
 	def add_signal_handler(self, ev, f):
 		self._sighand.setdefault(ev, []).append(no_dbl_prot(f))
 
+	def set_signal_handler(self, ev, f):
+		self._sighand[ev] = [f]
+
 	def remove_signal_handler(self, ev, f):
 		if ev in self._sighand and f in self._sighand[ev]:
 			del self._sighand[ev][f]
