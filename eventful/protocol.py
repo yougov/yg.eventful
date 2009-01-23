@@ -145,6 +145,7 @@ class PipelinedProtocolHandler(ProtocolHandler):
 				self.set_writable(True)
 
 	def close_cleanly(self):
+		self.set_writable(True)
 		self._pipeline.close_request()
 
 class MessageProtocol(PipelinedProtocolHandler):

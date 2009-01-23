@@ -1,4 +1,5 @@
 import sys, socket
+from collections import defaultdict
 
 from eventful import MessageProtocol, Deferred, Client
 
@@ -8,6 +9,7 @@ response_codes = {
 	500 : ('500 Application Error', 'The server encountered an error while processing your request'),
 	501 : ('501 Not Implemented', 'The server is not programmed to handle to your request'),
 	200 : ('200 OK', ''),
+	202 : ('201 Created', ''),
 	202 : ('202 Accepted', ''),
 	205 : ('205 Reset Content', ''),
 }
@@ -22,15 +24,18 @@ def parse_request_line(line):
 
 class HttpHeaders:
 	def __init__(self):
-		self._headers = {}
+		self._headers = defaultdict(list)
 		self.link()
 
 	def add(self, k, v):
-		self._headers.setdefault(k.lower(), []).append(str(v).strip())
+		self._headers[k.lower()].append(str(v).strip())
 
 	def remove(self, k):
 		if k.lower() in self._headers:
 			del self._headers[k.lower()]
+
+	def set(self, k, v):
+		self._headers[k.lower()] = [k]
 
 	def format(self):
 		s = []
@@ -171,6 +176,17 @@ class HttpCommon(MessageProtocol):
 			self.write('%x\r\n%s\r\n' % (len(data), data))
 
 class HttpServerProtocol(HttpCommon):
+	standard_header_set = {
+		'Server' : 'eventful-http-server',
+	}
+
+	@property
+	def standard_headers(self):
+		heads = HttpHeaders()
+		for k, v in self.standard_header_set.iteritems():
+			heads.add(k, v)
+		return heads
+
 	def on_init(self):
 		HttpCommon.on_init(self)
 		self.add_signal_handler('http.request_line', self.on_req_line)
@@ -200,6 +216,16 @@ class HttpServerProtocol(HttpCommon):
 		self._req = HttpRequest(cmd, url, version, self._req_id)
 		self._req_id += 1
 		self.request_message('http.headers', sentinel='\r\n\r\n')
+
+	def send_standard_response(self, req, code, content=None, ct=None):
+		heads = self.standard_headers
+		if content:
+			heads.add('Content-Type', ct)
+		else:
+			content = response_codes[code][-1]
+		heads.add('Content-Length', len(content))
+		top = response_codes[code][0]
+		self.send_http_response(req, top, heads, content)
 
 	def send_http_response(self, req, code, heads, body):
 		if req.id == self._next_response:
@@ -338,27 +364,6 @@ from urlparse import urlparse
 import cgi
 
 class RESTServer(HttpServerProtocol):
-	standard_header_set = {
-		'Server' : 'eventful-rest-server',
-	}
-
-	@property
-	def standard_headers(self):
-		heads = HttpHeaders()
-		for k, v in self.standard_header_set.iteritems():
-			heads.add(k, v)
-		return heads
-
-	def send_standard_response(self, req, code, content=None, ct=None):
-		heads = self.standard_headers
-		if content:
-			heads.add('Content-Type', ct)
-		else:
-			content = response_codes[code][-1]
-		heads.add('Content-Length', len(content))
-		top = response_codes[code][0]
-		self.send_http_response(req, top, heads, content)
-
 	def handle_object(self, req, method):
 		parts = urlparse(req.url)
 		path = parts.path
