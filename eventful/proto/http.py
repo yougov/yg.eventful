@@ -1,4 +1,4 @@
-import sys, socket
+import re, sys, socket, urllib
 from collections import defaultdict
 
 from eventful import MessageProtocol, Deferred, Client
@@ -14,12 +14,21 @@ response_codes = {
 	205 : ('205 Reset Content', ''),
 }
 
+unquote_plus = urllib.unquote_plus
+quoted_slash = re.compile("(?i)%2F")
+
 def parse_request_line(line):
 	items = line.split(' ')
 	items[0] = items[0].upper()
-	if len(items) == 2:
-		return tuple(items) + ('0.9',)
-	items[2] = items[2].split('/')[-1].strip()
+	# "METHOD URL VERSION" is the most common case, so we handle it first below
+	if len(items) == 3:
+		items[2] = items[2].split('/')[-1].strip()
+	else:
+		items.append('0.9')
+	# unquote the url (code borrowed from the CherryPy WSGI server)
+	url = items[1]
+	atoms = [unquote_plus(x).decode('utf-8') for x in quoted_slash.split(url)]
+	items[1] = "%2F".join(atoms)
 	return tuple(items)
 
 class HttpHeaders:
