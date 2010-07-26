@@ -32,6 +32,10 @@ class HttpHeaders:
 		if k.lower() in self._headers:
 			del self._headers[k.lower()]
 
+	def set(self, k, v):
+		self.remove(k)
+		self.add(k, v)
+
 	def format(self):
 		s = []
 		for h, vs in self._headers.iteritems():

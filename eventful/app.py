@@ -105,13 +105,11 @@ class Application:
 				res = f(*args, **kw)
 			except Exception, e:
 				def cb_error():
-					if d:
-						d.errback(e)
+					d.errback(e)
 				self.wake(cb_error)
 			else:
 				def cb_success():
-					if d:
-						d.callback(res)
+					d.callback(res)
 				self.wake(cb_success)
 
 		thread.start_new_thread(wrap, ())
