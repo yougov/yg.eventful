@@ -1,6 +1,16 @@
-import sys
+import sys, socket
 
 from eventful import MessageProtocol, Deferred, Client
+
+response_codes = {
+	404 : ('404 Not Found', 'The specified resource was not found'),
+	403 : ('403 Permission Denied', 'Access is denied to this resource'),
+	500 : ('500 Application Error', 'The server encountered an error while processing your request'),
+	501 : ('501 Not Implemented', 'The server is not programmed to handle to your request'),
+	200 : ('200 OK', ''),
+	202 : ('202 Accepted', ''),
+	205 : ('205 Reset Content', ''),
+}
 
 def parse_request_line(line):
 	items = line.split(' ')
@@ -21,6 +31,10 @@ class HttpHeaders:
 	def remove(self, k):
 		if k.lower() in self._headers:
 			del self._headers[k.lower()]
+
+	def set(self, k, v):
+		self.remove(k)
+		self.add(k, v)
 
 	def format(self):
 		s = []
@@ -215,6 +229,7 @@ class HttpServerProtocol(HttpCommon):
 	def start_chunked_response(self, req, code, heads):	
 		if req.version < '1.1':
 			raise HttpProtocolError, 'Cannot send a chunked response back to a < 1.1 client'
+		heads.add('Transfer-Encoding', 'chunked')
 			
 		if req.id == self._next_response:
 			self._chunk_req = req
@@ -246,11 +261,12 @@ class HttpServerProtocol(HttpCommon):
 		self.send_http_response(req, '501 Not Implemented', heads, msg)
 			
 class HttpResponse:
-	def __init__(self, code, status, version):
+	def __init__(self, code, status, version, request=None):
 		self.code = code
 		self.status = status
 		self.version = version
 		self.headers = None
+		self.request = request
 		
 	def __str__(self):	
 		def p():
@@ -288,7 +304,7 @@ class HttpClientProtocol(HttpCommon):
 		if body:
 			self.write(body)
 		d = Deferred()	
-		self._callbacks.append(d)
+		self._callbacks.append((d, req))
 		return d
 	
 	def on_response_line(self, ev, data):
@@ -304,15 +320,106 @@ class HttpClientProtocol(HttpCommon):
 				self.add_signal_handler('prot.disconnected', self.finish_message)
 				self.request_message(bytes=sys.maxint)
 		else:	
-			d = self._callbacks.pop(0)
+			d, req = self._callbacks.pop(0)
+			self.resp.request = req
 			d.callback((self.resp, body))
 			self.reset()
 		
 	def finish_message(self, ev):	
 		body = self.pop_buffer()
-		d = self._callbacks.pop(0)
+		d, req = self._callbacks.pop(0)
+		self.resp.request = req
 		d.callback((self.resp, body))
+		while self._callbacks:
+			d, req = self._callbacks.pop(0)
+			d.errback(socket.error("connection closed"))
 	
 class HttpClient(Client):
 	def __init__(self, version='1.1'):
 		Client.__init__(self, HttpClientProtocol, version=version)
+
+from urlparse import urlparse
+import cgi
+
+class RESTServer(HttpServerProtocol):
+	standard_header_set = {
+		'Server' : 'eventful-rest-server',
+	}
+
+	@property
+	def standard_headers(self):
+		heads = HttpHeaders()
+		for k, v in self.standard_header_set.iteritems():
+			heads.add(k, v)
+		return heads
+
+	def send_standard_response(self, req, code, content=None, ct=None):
+		heads = self.standard_headers
+		if content:
+			heads.add('Content-Type', ct)
+		else:
+			content = response_codes[code][-1]
+		heads.add('Content-Length', len(content))
+		top = response_codes[code][0]
+		self.send_http_response(req, top, heads, content)
+
+	def handle_object(self, req, method):
+		parts = urlparse(req.url)
+		path = parts.path
+		segments = path[1:].split('/')
+		object = segments[0]
+		if not object:
+			object = '__default__'
+		sigstr = 'rest.%s.%s' % (method, object)
+		#print sigstr
+		if not self.will_handle(sigstr):
+			self.send_standard_response(req, 501)
+		else:
+			try:
+				query_dict = cgi.parse_qs(parts.query)
+				if req.body:
+					query_dict.update(cgi.parse_qs(req.body))
+				result = self.emit(sigstr, req, *(segments[1:]), **query_dict) 
+				def respond(result):
+					if type(result) is int:
+						self.send_standard_response(req, result)
+					elif result is None:
+						self.send_standard_response(req, 500)
+						assert result != None
+					else:
+						code, ct, content = result
+						self.send_standard_response(req, code, content, ct)
+				def error(e):
+					self.send_standard_response(req, 500)
+					print e # we can do better XXX
+
+				if isinstance(result, Deferred):
+					# Comet-like behavior
+					result.add_callback(respond)
+					result.add_errback(error)
+				else:
+					respond(result)
+			except:
+				self.send_standard_response(req, 500)
+				raise
+
+	def on_HTTP_GET(self, req):
+		self.handle_object(req, 'GET')
+
+	def on_HTTP_POST(self, req):
+		self.handle_object(req, 'POST')
+
+	def on_HTTP_HEAD(self, req):
+		self.handle_object(req, 'HEAD')
+
+	def on_HTTP_PUT(self, req):
+		self.handle_object(req, 'PUT')
+
+	def on_HTTP_DELETE(self, req):
+		self.handle_object(req, 'DELETE')
+
+	def on_HTTP_TRACE(self, req):
+		self.handle_object(req, 'TRACE')
+
+	def on_HTTP_CONNECT(self, req):
+		self.handle_object(req, 'CONNECT')

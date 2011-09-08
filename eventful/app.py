@@ -1,11 +1,18 @@
 import socket
 import event
 import traceback
+import os
+import fcntl
+import errno
+import thread
+from Queue import Queue, Empty
 
 from eventful import eventbase
 from eventful import protocol
 from eventful import logmod, log
 from eventful import timers
+from eventful.util import set_nonblocking, until_concludes
+from eventful.defer import Deferred
 
 class Application:
 	def __init__(self, logger=None):
@@ -15,6 +22,7 @@ class Application:
 		self.logger = logger
 		self.add_log = self.logger.add_log
 		self._services = []
+		self._ext_call_q = Queue()
 
 	def run(self):
 		self._run = True
@@ -25,9 +33,13 @@ class Application:
 			event.event(eventbase.event_read_bound_socket,
 			handle=s.sock, evtype=event.EV_READ | event.EV_PERSIST, arg=s).add()
 
-		def allow_signals():
-			pass
-		timers.call_every(1.0, allow_signals)
+		self.setup_wake_pipe()
+
+		def checkpoint():
+			if not self._run:
+				raise SystemExit
+
+		timers.call_every(1.0, checkpoint)
 		
 		self.setup()
 		while self._run:
@@ -45,7 +57,40 @@ class Application:
 
 		log.info('Ending eventful application')
 
+	def setup_wake_pipe(self):
+		'''Establish a pipe that can be used to wake up the main
+		loop.
+		'''
+		thread.start_new_thread(lambda: None, ())
+		self._wake_i, self._wake_o = os.pipe()
+		set_nonblocking(self._wake_i)
+		set_nonblocking(self._wake_o)
+		event.event(self.wake_routine, handle=self._wake_i, 
+		evtype=event.EV_READ | event.EV_PERSIST).add()
+
+	def wake_routine(self, ev, sock, evtype, svc):
+		# clear the notifications
+		try:
+			until_concludes(os.read, sock, 8192)
+		except (IOError, OSError), err:
+			if err.args[0] != errno.EAGAIN:
+				raise
+
+		# call any callbacks from out of the main thread
+		while True:
+			try:
+				call = self._ext_call_q.get(block=False)
+			except Empty:
+				break
+			else:
+				call()
+
+	def wake(self, callback):
+		self._ext_call_q.put(callback)
+		until_concludes(os.write, self._wake_o, ' ')
+
 	def add_service(self, service):
+		service.application = self
 		self._services.append(service)
 		
 	def halt(self):	
@@ -53,6 +98,21 @@ class Application:
 
 	def setup(self):
 		pass
+
+	def defer_to_thread(self, d, f, *args, **kw):
+		def wrap():
+			try:
+				res = f(*args, **kw)
+			except Exception, e:
+				def cb_error():
+					d.errback(e)
+				self.wake(cb_error)
+			else:
+				def cb_success():
+					d.callback(res)
+				self.wake(cb_success)
+
+		thread.start_new_thread(wrap, ())
 		
 class Service:
 	LQUEUE_SIZ = 500
@@ -63,6 +123,7 @@ class Service:
 		assert issubclass(protocol_handler, protocol.ProtocolHandler), \
 		"Argument 1 to Service() must be a Protocol Handler"
 		self.protocol_handler = protocol_handler
+		self.application = None
 
 	def handle_cannot_bind(self, reason):
 		log.critical("service at %s:%s cannot bind: %s" % (self.iface or '*', 
@@ -89,6 +150,7 @@ class Service:
 	def accept_new_connection(self, sock, addr):
 		prot = self.protocol_handler(sock, addr)
 		prot.service = self
+		prot.application = self.application
 		prot.on_init()
 		
 class Client:

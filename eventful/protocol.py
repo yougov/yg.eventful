@@ -11,6 +11,8 @@ def no_dbl_prot(f):
 class ProtocolHandler:
 	_mixins = []
 	def __init__(self, sock, addr):
+		self.service = None
+		self.application = None
 		self.sock = sock
 		self.remote_addr = addr
 
@@ -38,14 +40,30 @@ class ProtocolHandler:
 	def add_signal_handler(self, ev, f):
 		self._sighand.setdefault(ev, []).append(no_dbl_prot(f))
 
+	def set_signal_handler(self, ev, f):
+		self._sighand[ev] = [f]
+
+	def remove_signal_handler(self, ev, f):
+		if ev in self._sighand and f in self._sighand[ev]:
+			del self._sighand[ev][f]
+
+	def remove_signal_handlers(self, ev):
+		if ev in self._sighand:
+			del self._sighand[ev]
+
+	def will_handle(self, ev):
+		return bool(self._sighand.get(ev))
+
 	def emit(self, event, *args, **kw):
 		try:
 			fs = self._sighand[event]
 		except KeyError:
 			self._sighand[event] = []
 			return
+		r = None
 		for f in fs:
-			f(self, event, *args, **kw)
+			r = f(self, event, *args, **kw)
+		return r
 
 	def on_init(self):
 		pass
@@ -88,6 +106,8 @@ class ProtocolHandler:
 		if client:
 			self.emit('prot.remote_dropped', reason)
 		self._sighand = None
+		self.service = None
+		self.application = None
 
 class PipelinedProtocolHandler(ProtocolHandler):
 	def __init__(self, *args, **kw):
@@ -162,17 +182,19 @@ class MessageProtocol(PipelinedProtocolHandler):
 	def _scan_data(self):
 		'''Look for the message
 		'''
-		ind = None
-		all = None
-		if type(self._atterm) is int:
-			if self._atmark >= self._atterm:
-				ind = self._atterm
-		else:
-			all = ''.join(self._atinbuf)
-			res = all.find(self._atterm)
-			if res != -1:
-				ind = res + len(self._atterm)
-		if ind is not None:
+		while 1:
+			ind = None
+			all = None
+			if type(self._atterm) is int:
+				if self._atmark >= self._atterm:
+					ind = self._atterm
+			else:
+				all = ''.join(self._atinbuf)
+				res = all.find(self._atterm)
+				if res != -1:
+					ind = res + len(self._atterm)
+			if ind is None:
+				break
 			if all is None:
 				all = ''.join(self._atinbuf)
 			use = all[:ind]
@@ -187,7 +209,6 @@ class MessageProtocol(PipelinedProtocolHandler):
 			self._eat = 0
 			if self.closed or not self._renable:
 				return
-			self._scan_data()
 		if self._atterm is not None:
 			self.set_readable(True)
 
