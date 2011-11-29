@@ -2,11 +2,14 @@ from setuptools import setup
 
 setup_params = dict(
 	name="eventful",
-	version="1.0.8",
+	use_hg_version=True,
 	url="http://dev.yougov.com/G",
 	author="Jamie Turner",
 	author_email="dev@yougov.com",
 	packages=["eventful", "eventful.proto"],
+	setup_requires=[
+		'hgtools',
+	],
 )
 
 if __name__ == '__main__':
