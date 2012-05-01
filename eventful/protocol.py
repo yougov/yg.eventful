@@ -1,4 +1,3 @@
-import socket
 import event
 from eventful import eventbase
 from eventful import pipeline
@@ -157,7 +156,7 @@ class MessageProtocol(PipelinedProtocolHandler):
 		self._mess_sig = 'prot.message'
 		self._mess_iter = None
 		self.add_signal_handler("prot.set_readable", self._set_readable)
-		
+
 	def request_message(self, signal='prot.message', bytes=0, sentinel='\r\n', _keepiter=False):
 		self._atterm = bytes or sentinel
 		self._mess_sig = signal
@@ -214,7 +213,7 @@ class MessageProtocol(PipelinedProtocolHandler):
 
 	def skip_input(self, l):
 		self._eat += l
-		
+
 	def pop_buffer(self):
 		all = ''.join(self._atinbuf)
 		self._atinbuf = []
