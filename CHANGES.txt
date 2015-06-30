@@ -1,3 +1,8 @@
+2.0
+===
+
+Project renamed to yg.eventful to avoid collision with PyPI project ``eventful``.
+
 1.0.8
 =====
 
