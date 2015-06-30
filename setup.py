@@ -27,6 +27,7 @@ setup_params = dict(
 	include_package_data=True,
 	namespace_packages=['yg'],
 	install_requires=[
+		'event',
 	],
 	extras_require={
 	},
