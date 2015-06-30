@@ -7,12 +7,12 @@ import errno
 import thread
 from Queue import Queue, Empty
 
-from eventful import eventbase
-from eventful import protocol
-from eventful import logmod, log
-from eventful import timers
-from eventful.util import set_nonblocking, until_concludes
-from eventful.defer import Deferred
+from . import eventbase
+from . import protocol
+from . import logmod, log
+from . import timers
+from .util import set_nonblocking, until_concludes
+from .defer import Deferred
 
 class Application:
 	def __init__(self, logger=None):
@@ -40,7 +40,7 @@ class Application:
 				raise SystemExit
 
 		timers.call_every(1.0, checkpoint)
-		
+
 		self.setup()
 		while self._run:
 			try:
@@ -65,7 +65,7 @@ class Application:
 		self._wake_i, self._wake_o = os.pipe()
 		set_nonblocking(self._wake_i)
 		set_nonblocking(self._wake_o)
-		event.event(self.wake_routine, handle=self._wake_i, 
+		event.event(self.wake_routine, handle=self._wake_i,
 		evtype=event.EV_READ | event.EV_PERSIST).add()
 
 	def wake_routine(self, ev, sock, evtype, svc):
@@ -92,8 +92,8 @@ class Application:
 	def add_service(self, service):
 		service.application = self
 		self._services.append(service)
-		
-	def halt(self):	
+
+	def halt(self):
 		self._run = False
 
 	def setup(self):
@@ -113,7 +113,7 @@ class Application:
 				self.wake(cb_success)
 
 		thread.start_new_thread(wrap, ())
-		
+
 class Service:
 	LQUEUE_SIZ = 500
 	def __init__(self, protocol_handler, port, iface=''):
@@ -126,7 +126,7 @@ class Service:
 		self.application = None
 
 	def handle_cannot_bind(self, reason):
-		log.critical("service at %s:%s cannot bind: %s" % (self.iface or '*', 
+		log.critical("service at %s:%s cannot bind: %s" % (self.iface or '*',
 				self.port, reason))
 		raise
 
@@ -152,14 +152,14 @@ class Service:
 		prot.service = self
 		prot.application = self.application
 		prot.on_init()
-		
+
 class Client:
 	def __init__(self, protocol, *args, **kw):
 		self.protocol = protocol
 		self.args = args
 		self.kw = kw
-		
-	def connect(self, addr, port):	
+
+	def connect(self, addr, port):
 		remote_addr = (addr, port)
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.connect(remote_addr)

@@ -3,8 +3,8 @@
 import socket
 
 import tests
-from eventful.proto.http import HttpClient, HttpHeaders
-from eventful import Application
+from yg.eventful.proto.http import HttpClient, HttpHeaders
+from yg.eventful import Application
 
 resp_count = 0
 def print_response(res, num):
@@ -27,12 +27,12 @@ app = Application()
 c = HttpClient()
 
 
-# let's look up the names now b/c we don't have an async 
+# let's look up the names now b/c we don't have an async
 # resolver handy -- a few requests to jamwt.com
 heads = HttpHeaders()
 heads.add("host", "www.jamwt.com")
 heads.add("user-agent", "eventful-http-example-client/1.0")
-connection = c.connect(socket.gethostbyaddr("www.jamwt.com")[-1][0], 80) 
+connection = c.connect(socket.gethostbyaddr("www.jamwt.com")[-1][0], 80)
 connection.request("GET", "/", heads, '').add_callback(print_response, 1)
 connection.request("GET", "/Py-TOC/", heads, '').add_callback(print_response, 2)
 
@@ -46,4 +46,4 @@ connection.request("GET", "/", heads, '').add_callback(print_response, 3)
 
 # start the event loop
 # will go until halt() is called
-app.run() 
+app.run()

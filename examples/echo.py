@@ -1,5 +1,5 @@
 import tests
-from eventful import Application, Service, MessageProtocol
+from yg.eventful import Application, Service, MessageProtocol
 
 class EchoProtocolHandler(MessageProtocol):
 	def on_init(self):

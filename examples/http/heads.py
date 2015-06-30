@@ -1,5 +1,5 @@
 import tests
-from eventful.proto.http import *
+from yg.eventful.proto.http import *
 
 heads = \
 '''Content-Type: text/html\r
@@ -11,4 +11,4 @@ Content-Type: text/plain'''
 
 h = HttpHeaders()
 h.parse(heads)
-print h._headers
+print(h._headers)

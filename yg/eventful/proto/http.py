@@ -1,6 +1,6 @@
 import sys, socket
 
-from eventful import MessageProtocol, Deferred, Client
+from .. import MessageProtocol, Deferred, Client
 
 response_codes = {
 	404 : ('404 Not Found', 'The specified resource was not found'),
@@ -42,7 +42,7 @@ class HttpHeaders:
 			for v in vs:
 				s.append('%s: %s' % (h.title(), v))
 		return '\r\n'.join(s)
-	
+
 	def link(self):
 		self.items = self._headers.items
 		self.keys = self._headers.keys
@@ -91,25 +91,25 @@ class HttpRequest:
 		self.headers = None
 		self.body = None
 		self.id = id
-		
-	def format(self):	
+
+	def format(self):
 		return '%s %s HTTP/%s' % (self.cmd, self.url, self.version)
-		
-class HttpProtocolError(Exception): pass	
+
+class HttpProtocolError(Exception): pass
 
 class HttpCommon(MessageProtocol):
 	def on_init(self):
 		MessageProtocol.on_init(self)
 		self.set_readable(True)
-		
+
 		self.add_signal_handler('http.headers', self.on_headers)
 		self.add_signal_handler('http.body', self.on_body)
-		
+
 		# Chunked
 		self.add_signal_handler('http.chunk_size', self.on_chunk_size)
 		self.add_signal_handler('http.chunk_body', self.on_chunk_body)
 		self.add_signal_handler('http.chunk_trailer', self.on_chunk_trailer)
-		
+
 	def on_headers(self, ev, data):
 		heads = HttpHeaders()
 		heads.parse(data)
@@ -117,12 +117,12 @@ class HttpCommon(MessageProtocol):
 		self.check_expect(heads)
 		if not is_more:
 			self.message_in(heads, None)
-		else:	
+		else:
 			self._headers = heads
 
 	def on_body(self, ev, data):
 		self.message_in(self._headers, data)
-		
+
 	def check_for_http_body(self, heads):
 		if heads.get('Transfer-Encoding') == ['chunked']:
 			self._chunks = []
@@ -160,11 +160,11 @@ class HttpCommon(MessageProtocol):
 		else:
 			# Adding a header via the trailer...
 			self._headers.add(*tuple(data.split(':', 1)))
-			
-	def check_expect(self, heads):	
+
+	def check_expect(self, heads):
 		pass
-	
-	def _add_chunk(self, data, extra_headers=None):	
+
+	def _add_chunk(self, data, extra_headers=None):
 		if data == None:
 			self.write('0\r\n')
 			if extra_headers:
@@ -182,8 +182,8 @@ class HttpServerProtocol(HttpCommon):
 		self._waiting_responses = {}
 		self._req_id = 1
 		self._next_response = 1
-		
-	def reset(self):	
+
+	def reset(self):
 		self._req = None
 		self.request_message('http.request_line', sentinel='\r\n')
 
@@ -192,7 +192,7 @@ class HttpServerProtocol(HttpCommon):
 			return getattr(self, 'on_HTTP_%s' % cmd)
 		except AttributeError:
 			return self.on_no_http_handler
-		
+
 	def message_in(self, heads, body):
 		self._req.headers = heads
 		self._req.body = body
@@ -200,7 +200,7 @@ class HttpServerProtocol(HttpCommon):
 		self.reset()
 
 	def on_req_line(self, ev, data):
-		cmd, url, version = parse_request_line(data)	
+		cmd, url, version = parse_request_line(data)
 		self._req = HttpRequest(cmd, url, version, self._req_id)
 		self._req_id += 1
 		self.request_message('http.headers', sentinel='\r\n\r\n')
@@ -212,11 +212,11 @@ class HttpServerProtocol(HttpCommon):
 				self._process_waiting_responses()
 		else:
 			self._waiting_responses[req.id] = (req, code, heads, body, None)
-			
+
 	def check_expect(self, heads):
 		if self._req.version >= '1.1' and heads.get('Expect') == ['100-continue']:
 			self.write('HTTP/1.1 100 Continue\r\n\r\n')
-		
+
 	def _send_http_response(self, req, code, heads, body, chunked=False):
 		self.write(
 '''HTTP/%s %s\r\n%s\r\n\r\n''' % (req.version, code, heads.format()))
@@ -225,12 +225,12 @@ class HttpServerProtocol(HttpCommon):
 		if not chunked and (req.version < '1.1' or req.headers.get('Connection') == ['close']):
 			self.close_cleanly()
 		self._next_response += 1
-		
-	def start_chunked_response(self, req, code, heads):	
+
+	def start_chunked_response(self, req, code, heads):
 		if req.version < '1.1':
 			raise HttpProtocolError, 'Cannot send a chunked response back to a < 1.1 client'
 		heads.add('Transfer-Encoding', 'chunked')
-			
+
 		if req.id == self._next_response:
 			self._chunk_req = req
 			self._send_http_response(req, code, heads, None, True)
@@ -239,7 +239,7 @@ class HttpServerProtocol(HttpCommon):
 			d = Deferred()
 			self._waiting_responses[req.id] = (req, code, heads, None, d)
 			return d
-		
+
 	def _process_waiting_responses(self):
 		while self._next_response in self._waiting_responses:
 			next = self._waiting_responses.pop(self._next_response)
@@ -247,19 +247,19 @@ class HttpServerProtocol(HttpCommon):
 			if next[-1]:
 				self._chunk_req = next[0]
 				next[-1].callback(self._add_chunk)
-				
-	def chunks_done(self):	
+
+	def chunks_done(self):
 		req = self._chunk_req
 		if req.headers.get('Connection') == ['close']:
 			self.close_cleanly()
-			
+
 	def on_no_http_handler(self, req):
 		msg = 'No such handler for HTTP command %s' % req.cmd
 		heads = HttpHeaders()
 		heads.add('Content-Type', 'text/plain')
 		heads.add('Content-Length', len(msg))
 		self.send_http_response(req, '501 Not Implemented', heads, msg)
-			
+
 class HttpResponse:
 	def __init__(self, code, status, version, request=None):
 		self.code = code
@@ -267,8 +267,8 @@ class HttpResponse:
 		self.version = version
 		self.headers = None
 		self.request = request
-		
-	def __str__(self):	
+
+	def __str__(self):
 		def p():
 			yield "HTTP/%s %s %s\n" % (self.version, self.code, self.status)
 			yield "\nHeaders\n-------------\n"
@@ -276,56 +276,56 @@ class HttpResponse:
 				yield "%s: %s\n" % (h, ','.join(v))
 		return ''.join(list(p()))
 
-def parse_response_line(line):	
+def parse_response_line(line):
 	ver, code, status  = line.strip().split(' ', 2)
 	ver = ver.split('/')[-1]
 	code = int(code)
 	return code, status, ver
-		
+
 class HttpClientProtocol(HttpCommon):
 	def __init__(self, sock, remote_addr, version='1.1'):
 		HttpCommon.__init__(self, sock, remote_addr)
 		self._http_version = version
 		self._callbacks = []
 		self._closemark = False
-		
-	def on_init(self):	
+
+	def on_init(self):
 		HttpCommon.on_init(self)
 		self.add_signal_handler('http.response_line', self.on_response_line)
 		self.reset()
-		
-	def reset(self):	
+
+	def reset(self):
 		self.request_message('http.response_line', sentinel='\r\n')
 		self.resp = None
-		
-	def request(self, cmd, path, heads, body):	
+
+	def request(self, cmd, path, heads, body):
 		req = HttpRequest(cmd, path, self._http_version)
 		self.write('%s\r\n%s\r\n\r\n' % (req.format(), heads.format()))
 		if body:
 			self.write(body)
-		d = Deferred()	
+		d = Deferred()
 		self._callbacks.append((d, req))
 		return d
-	
+
 	def on_response_line(self, ev, data):
 		self.resp = HttpResponse(*parse_response_line(data))
 		self.request_message('http.headers', sentinel='\r\n\r\n')
-	
+
 	def message_in(self, headers, body):
 		self.resp.headers = headers
 		if body == None and headers.get('Connection') == ['close']:
 			if self.closed:
 				self.finish_message()
-			else:	
+			else:
 				self.add_signal_handler('prot.disconnected', self.finish_message)
 				self.request_message(bytes=sys.maxint)
-		else:	
+		else:
 			d, req = self._callbacks.pop(0)
 			self.resp.request = req
 			d.callback((self.resp, body))
 			self.reset()
-		
-	def finish_message(self, ev):	
+
+	def finish_message(self, ev):
 		body = self.pop_buffer()
 		d, req = self._callbacks.pop(0)
 		self.resp.request = req
@@ -333,7 +333,7 @@ class HttpClientProtocol(HttpCommon):
 		while self._callbacks:
 			d, req = self._callbacks.pop(0)
 			d.errback(socket.error("connection closed"))
-	
+
 class HttpClient(Client):
 	def __init__(self, version='1.1'):
 		Client.__init__(self, HttpClientProtocol, version=version)
@@ -379,7 +379,7 @@ class RESTServer(HttpServerProtocol):
 				query_dict = cgi.parse_qs(parts.query)
 				if req.body:
 					query_dict.update(cgi.parse_qs(req.body))
-				result = self.emit(sigstr, req, *(segments[1:]), **query_dict) 
+				result = self.emit(sigstr, req, *(segments[1:]), **query_dict)
 				def respond(result):
 					if type(result) is int:
 						self.send_standard_response(req, result)

@@ -1,6 +1,6 @@
 import tests
 
-from eventful import *
+from yg.eventful import *
 
 def echo(foo, otimer=None):
 	if otimer:

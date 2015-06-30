@@ -1,5 +1,5 @@
-from eventful.protocol import MessageProtocol
-from eventful.util import encode_netstring
+from ..protocol import MessageProtocol
+from ..util import encode_netstring
 
 class NetstringProtocol(MessageProtocol):
 	def on_init(self):

@@ -1,6 +1,6 @@
 import event
-from eventful import eventbase
-from eventful import pipeline
+from . import eventbase
+from . import pipeline
 
 def no_dbl_prot(f):
 	def real_signal_call(prot, *args, **kw):

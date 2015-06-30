@@ -6,9 +6,9 @@ import cStringIO
 import traceback
 
 import tests
-import eventful
-from eventful import Application, Service, log, Logger, ActivityTimeoutMixin
-from eventful.proto.http import HttpServerProtocol, HttpHeaders
+import yg.eventful
+from yg.eventful import Application, Service, log, Logger, ActivityTimeoutMixin
+from yg.eventful.proto.http import HttpServerProtocol, HttpHeaders
 
 HOSTNAME = os.uname()[1] # win32?
 
@@ -60,7 +60,7 @@ def build_wsgi_env(req, port, logger):
 class WSGIHttpServer(HttpServerProtocol):
 	def on_init(self):
 		HttpServerProtocol.on_init(self)
-		self.log = log.get_sublogger('wsgi-http-server', verbosity=eventful.LOGLVL_INFO)
+		self.log = log.get_sublogger('wsgi-http-server', verbosity=yg.eventful.LOGLVL_INFO)
 
 	def _start_response(self, status, response_headers, exc_info=None):
 		if exc_info:

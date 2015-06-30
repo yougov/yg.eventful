@@ -1,7 +1,7 @@
 import copy
 import event
 
-from eventful import log
+from . import log
 
 class Mixin:
 	def get_signal_handlers(self):
@@ -40,7 +40,7 @@ class ActivityTimeoutMixin(Mixin):
 		self.itimer = None
 		if self.input:
 			self.itimer = event.event(self.timeout,prot)
-		if self.output:	
+		if self.output:
 			self.otimer = event.event(self.timeout,prot)
 
 	def on_disconnect(self, prot, evt):
@@ -48,7 +48,7 @@ class ActivityTimeoutMixin(Mixin):
 			self.itimer.delete()
 		if self.otimer:
 			self.otimer.delete()
-			
+
 		self.itimer = None
 
 	def on_input(self, prot, evt, num):
@@ -60,7 +60,7 @@ class ActivityTimeoutMixin(Mixin):
 		self.itimer.delete()
 		if val:
 			self.itimer.add(self.input)
-			
+
 	def on_output(self, prot, evt, num):
 		if self.otimer.pending():
 			self.otimer.delete()

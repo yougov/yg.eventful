@@ -1,6 +1,6 @@
 import tests
-from eventful import Application, Service
-from eventful.proto.netstring import NetstringProtocol
+from yg.eventful import Application, Service
+from yg.eventful.proto.netstring import NetstringProtocol
 
 CLOSE = False
 

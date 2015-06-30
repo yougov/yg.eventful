@@ -1,7 +1,7 @@
 import tests
-import eventful
-from eventful import Application, Service, log, Logger
-from eventful.proto.http import HttpServerProtocol, HttpHeaders
+import yg.eventful
+from yg.eventful import Application, Service, log, Logger
+from yg.eventful.proto.http import HttpServerProtocol, HttpHeaders
 
 PORT = 5190
 SERVER = 'bogosity/2.1'
@@ -9,7 +9,7 @@ SERVER = 'bogosity/2.1'
 class HttpChunkedTestServer(HttpServerProtocol):
     def on_init(self):
         HttpServerProtocol.on_init(self)
-        self.log = log.get_sublogger('http-server', verbosity=eventful.LOGLVL_INFO)
+        self.log = log.get_sublogger('http-server', verbosity=yg.eventful.LOGLVL_INFO)
 
     def getStandardHeaders(self):
         heads = HttpHeaders()
@@ -26,6 +26,6 @@ class HttpChunkedTestServer(HttpServerProtocol):
         extra_heads.add('Boo', 'hiss')
         r(None, extra_heads)
 
-application = Application(logger=Logger(verbosity=eventful.LOGLVL_DEBUG))
+application = Application(logger=Logger(verbosity=yg.eventful.LOGLVL_DEBUG))
 application.add_service(Service(HttpChunkedTestServer, PORT))
 application.run()

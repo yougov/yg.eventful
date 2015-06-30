@@ -1,4 +1,4 @@
-from eventful.defer import Deferred
+from .defer import Deferred
 
 try:
 	import cStringIO
@@ -23,7 +23,7 @@ def get_file_length(f):
 class PipelineLimitReached(Exception): pass
 class PipelineCloseRequest(Exception): pass
 class PipelineClosed(Exception): pass
-	
+
 class Pipeline:
 	def __init__(self, limit=0):
 		self.line = []
@@ -86,7 +86,7 @@ class Pipeline:
 			self.callbacks.pop(0).callback(self)
 
 		return ''.join(rbuf)
-	
+
 	def backup(self, d):
 		self.line.insert(0, [make_SIO(d), len(d)])
 		self.used += len(d)

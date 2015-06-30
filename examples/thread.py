@@ -1,6 +1,6 @@
 import tests
-from eventful import Application, Service, MessageProtocol
-from eventful import Deferred
+from yg.eventful import Application, Service, MessageProtocol
+from yg.eventful import Deferred
 
 class DelayEchoProtocolHandler(MessageProtocol):
 	def on_init(self):
